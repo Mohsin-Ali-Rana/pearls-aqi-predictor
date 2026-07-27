@@ -1,0 +1,8 @@
+pandas
+numpy
+requests
+hopsworks
+xgboost
+lightgbm
+scikit-learn
+joblib
