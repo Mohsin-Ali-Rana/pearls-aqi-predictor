@@ -1,0 +1,18 @@
+# data/
+# __pycache__/
+# *.pyc
+# .ipynb_checkpoints/
+
+
+# Environments & Caches
+venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Data & Local Outputs
+data/
+*.csv
+*.pkl
+aqi_best_model/
+.env
