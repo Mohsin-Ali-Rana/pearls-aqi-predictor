@@ -2,12 +2,12 @@ import os
 import hopsworks
 import pandas as pd
 import joblib
-from datetime import datetime
 
 def run_inference():
     """
     Connects to Hopsworks, downloads the best registered model,
-    pulls the latest features, and generates real-time AQI predictions.
+    pulls the latest features, and generates real-time AQI predictions
+    directly in memory per project architecture guidelines.
     """
     # ----------------------------------------------------
     # 1. Connect & Retrieve Model from Hopsworks Registry
@@ -46,7 +46,6 @@ def run_inference():
     fs = project.get_feature_store()
     
     print("Loading feature data locally for immediate inference...")
-    # Pull the latest batch using the feature group's internal client read with low timeout
     fg = fs.get_feature_group("aqi_hourly_features", version=1)
     
     # Read the latest records using standard pandas read parameters
@@ -69,21 +68,9 @@ def run_inference():
     for idx, pred in enumerate(predictions):
         print(f" └─ Forecast Horizon +{idx+1}h -> Predicted PM2.5: {pred:.2f} µg/m³")
 
-    # ----------------------------------------------------
-    # 4. Export Predictions for Dashboard / Application Layer
-    # ----------------------------------------------------
-    output_dir = "src"
-    os.makedirs(output_dir, exist_ok=True)
-    
-    output_df = pd.DataFrame({
-        'timestamp': pd.date_range(start=datetime.now(), periods=3, freq='h'),
-        'predicted_pm2_5': predictions
-    })
-    
-    output_path = os.path.join(output_dir, "latest_predictions.csv")
-    output_df.to_csv(output_path, index=False)
-    print(f"✅ Successfully saved predictions to {output_path}!")
+    print("\n✅ Inference pipeline executed successfully directly from Hopsworks assets!")
+    return predictions
 
 if __name__ == "__main__":
-    print("Starting Phase 11: Automated Inference & Prediction Pipeline...")
+    print("Starting Automated Inference & Prediction Pipeline...")
     run_inference()
