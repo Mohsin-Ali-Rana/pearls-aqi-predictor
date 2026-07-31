@@ -18,9 +18,19 @@ def run_inference():
         api_key_value="yC0HPp2g2yuZjpXH.9FmXmXktv80uISKXoBZtImHRILwMNxReE2JhWfWX2oVkBVrBJt4JPV7OQGAbMuDu"  # Replace with your API key
     )
 
+    # mr = project.get_model_registry()
+    # print("Fetching latest version of 'aqi_pm25_predictor' model...")
+    # model_meta = mr.get_model("aqi_pm25_predictor", version=1)
+    # model_dir = model_meta.download()
+
     mr = project.get_model_registry()
     print("Fetching latest version of 'aqi_pm25_predictor' model...")
-    model_meta = mr.get_model("aqi_pm25_predictor", version=1)
+    
+    # Grab all versions of the model and select the latest one [-1]
+    models = mr.get_models("aqi_pm25_predictor")
+    model_meta = models[-1] 
+    
+    print(f"Loaded Model Version: {model_meta.version}")
     model_dir = model_meta.download()
     
     # Extract training metrics registered in Hopsworks
