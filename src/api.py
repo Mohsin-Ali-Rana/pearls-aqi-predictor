@@ -78,6 +78,30 @@ def get_aqi_color(aqi_val: float) -> str:
         return "#EF4444"  # Red
     return "#8B5CF6"      # Purple
 
+def convert_pm25_to_aqi(pm25: float) -> float:
+    if pm25 <= 12.0:
+        return (50 / 12.0) * pm25
+    elif pm25 <= 35.4:
+        return 51 + ((49 / 23.4) * (pm25 - 12.1))
+    elif pm25 <= 55.4:
+        return 101 + ((49 / 19.9) * (pm25 - 35.5))
+    elif pm25 <= 150.4:
+        return 151 + ((49 / 94.9) * (pm25 - 55.5))
+    else:
+        return 201 + ((99 / 99.9) * (pm25 - 150.5))
+
+def get_aqi_status(aqi_val: float) -> str:
+    if aqi_val <= 50:
+        return "Good"
+    elif aqi_val <= 100:
+        return "Moderate"
+    elif aqi_val <= 150:
+        return "Unhealthy for Sensitive Groups"
+    elif aqi_val <= 200:
+        return "Unhealthy"
+    else:
+        return "Very Unhealthy"
+
 def get_health_advisory(aqi_val: float) -> tuple[str, str]:
     if aqi_val <= 50:
         return "Good Air Quality", "Air quality is considered satisfactory, and air pollution poses little or no risk."
@@ -103,34 +127,29 @@ async def get_live_telemetry():
         strategic = ml_output.get("strategic_3_day", {})
         
         # Dynamically extract confidence and pipeline metrics
-        dynamic_confidence = int(ml_output.get("forecast_confidence", 94))
+        dynamic_confidence = int(round(float(ml_output.get("forecast_confidence", 94))))
         p_metrics = ml_output.get("pipeline_metrics", {})
-        dynamic_completeness = p_metrics.get("completeness", "99.4%")
+        dynamic_completeness = p_metrics.get("completeness", "100.0%")
         dynamic_accuracy = p_metrics.get("sensor_accuracy", "98.7%")
         
-        current_pm25 = tactical[0]["predicted_pm2_5"] if tactical else 18.73
+        current_pm25 = float(tactical[0]["predicted_pm2_5"]) if tactical else 18.73
         
         # EPA PM2.5 to AQI conversion for current hour
-        if current_pm25 <= 12.0:
-            current_aqi = round((50 / 12.0) * current_pm25, 1)
-        elif current_pm25 <= 35.4:
-            current_aqi = round(51 + ((49 / 23.4) * (current_pm25 - 12.1)), 1)
-        else:
-            current_aqi = round(101 + ((49 / 19.9) * (current_pm25 - 35.5)), 1)
+        current_aqi = round(convert_pm25_to_aqi(current_pm25), 1)
 
         advisory_title, advisory_detail = get_health_advisory(current_aqi)
 
         # 2. Extract multi-horizon 24h, 48h, 72h strategic forecasts
-        f_24h = strategic.get("24h", {"predicted_aqi": 73.3, "status": "Moderate", "rmse": 2.6})
-        f_48h = strategic.get("48h", {"predicted_aqi": 67.1, "status": "Moderate", "rmse": 2.9})
-        f_72h = strategic.get("72h", {"predicted_aqi": 67.1, "status": "Moderate", "rmse": 3.3})
+        f_24h = strategic.get("24h", {"predicted_aqi": 72.2, "status": "Moderate", "rmse": 2.6})
+        f_48h = strategic.get("48h", {"predicted_aqi": 65.8, "status": "Moderate", "rmse": 2.9})
+        f_72h = strategic.get("72h", {"predicted_aqi": 65.8, "status": "Moderate", "rmse": 3.3})
 
         # 3. Build API response payload using live ML outputs
         return TelemetryResponse(
             city="Islamabad Capital Territory",
             stationName="Primary Sector Station",
             currentAQI=float(current_aqi),
-            aqiStatus="Moderate" if current_aqi <= 100 else "Unhealthy",
+            aqiStatus=get_aqi_status(current_aqi),
             aqiColor=get_aqi_color(current_aqi),
             aqiDelta="▼ Dynamic Stream Active",
             pm25=float(current_pm25),
@@ -139,7 +158,7 @@ async def get_live_telemetry():
             healthDetail=advisory_detail,
             confidenceScore=dynamic_confidence,
             modelName=f"{ml_output.get('model_name', 'aqi_pm25_predictor')} v{ml_output.get('model_version', 1)}",
-            featureStoreStatus="Connected",
+            featureStoreStatus="Connected" if ml_output.get("status") == "success" else "Disconnected",
             forecasts=[
                 ForecastHorizon(
                     horizon="24H",
@@ -164,17 +183,29 @@ async def get_live_telemetry():
                 ),
             ],
             trendHistory=[
-                TrendPoint(time="+1h", aqi=round(tactical[0]["predicted_pm2_5"] * 3.5, 1) if len(tactical) > 0 else 65.0, pm25=tactical[0]["predicted_pm2_5"] if len(tactical) > 0 else 18.73),
-                TrendPoint(time="+2h", aqi=round(tactical[1]["predicted_pm2_5"] * 2.8, 1) if len(tactical) > 1 else 80.0, pm25=tactical[1]["predicted_pm2_5"] if len(tactical) > 1 else 49.4),
-                TrendPoint(time="+3h", aqi=round(tactical[2]["predicted_pm2_5"] * 3.4, 1) if len(tactical) > 2 else 67.0, pm25=tactical[2]["predicted_pm2_5"] if len(tactical) > 2 else 19.8),
-                TrendPoint(time="24H Avg", aqi=float(f_24h["predicted_aqi"]), pm25=float(f_24h["predicted_aqi"]) / 3.2),
-                TrendPoint(time="48H Avg", aqi=float(f_48h["predicted_aqi"]), pm25=float(f_48h["predicted_aqi"]) / 3.2),
-                TrendPoint(time="72H Avg", aqi=float(f_72h["predicted_aqi"]), pm25=float(f_72h["predicted_aqi"]) / 3.2),
+                TrendPoint(
+                    time="+1h",
+                    aqi=float(round(convert_pm25_to_aqi(tactical[0]["predicted_pm2_5"]), 1)) if len(tactical) > 0 else 64.9,
+                    pm25=float(tactical[0]["predicted_pm2_5"]) if len(tactical) > 0 else 18.73
+                ),
+                TrendPoint(
+                    time="+2h",
+                    aqi=float(round(convert_pm25_to_aqi(tactical[1]["predicted_pm2_5"]), 1)) if len(tactical) > 1 else 131.0,
+                    pm25=float(tactical[1]["predicted_pm2_5"]) if len(tactical) > 1 else 48.97
+                ),
+                TrendPoint(
+                    time="+3h",
+                    aqi=float(round(convert_pm25_to_aqi(tactical[2]["predicted_pm2_5"]), 1)) if len(tactical) > 2 else 65.8,
+                    pm25=float(tactical[2]["predicted_pm2_5"]) if len(tactical) > 2 else 19.18
+                ),
+                TrendPoint(time="24H Avg", aqi=float(f_24h["predicted_aqi"]), pm25=float(round(f_24h["predicted_aqi"] / 3.2, 2))),
+                TrendPoint(time="48H Avg", aqi=float(f_48h["predicted_aqi"]), pm25=float(round(f_48h["predicted_aqi"] / 3.2, 2))),
+                TrendPoint(time="72H Avg", aqi=float(f_72h["predicted_aqi"]), pm25=float(round(f_72h["predicted_aqi"] / 3.2, 2))),
             ],
             hotspots=[
-                HotspotStation(id=1, name="1. Primary Monitoring Node", aqi=f"{int(current_aqi)} AQI", color="#FEF3C7", textColor="#D97706"),
-                HotspotStation(id=2, name="2. Sector Forecast Station", aqi=f"{int(f_24h['predicted_aqi'])} AQI", color="#DCFCE7", textColor="#166534"),
-                HotspotStation(id=3, name="3. Corridor Sensor Station", aqi=f"{int(f_48h['predicted_aqi'])} AQI", color="#DCFCE7", textColor="#166534"),
+                HotspotStation(id=1, name="1. Primary Monitoring Node", aqi=f"{int(current_aqi)} AQI", color=get_aqi_color(current_aqi), textColor="#FFFFFF"),
+                HotspotStation(id=2, name="2. Sector Forecast Station", aqi=f"{int(f_24h['predicted_aqi'])} AQI", color=get_aqi_color(f_24h['predicted_aqi']), textColor="#FFFFFF"),
+                HotspotStation(id=3, name="3. Corridor Sensor Station", aqi=f"{int(f_48h['predicted_aqi'])} AQI", color=get_aqi_color(f_48h['predicted_aqi']), textColor="#FFFFFF"),
             ],
             systemMetrics=SystemMetrics(
                 completeness=str(dynamic_completeness),

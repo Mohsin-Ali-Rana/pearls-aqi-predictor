@@ -47,8 +47,15 @@ def run_inference():
     print("Loading feature data from Feature Store...")
     fg = fs.get_feature_group("aqi_hourly_features", version=1)
     
+    # Fetch online or offline batch data from Hopsworks
     batch_data = fg.read(online=True)
+    # Convert time column to datetime and sort ascending
+    batch_data['time'] = pd.to_datetime(batch_data['time'])
     batch_data = batch_data.sort_values("time").reset_index(drop=True)
+    
+    # Always pick the absolute latest record
+    latest_observation = batch_data.tail(1)
+    print(f"Running inference for timestamp: {latest_observation['time'].values[0]}")
 
     target_col = "pm2_5"
     drop_cols = [target_col, "time"] if "time" in batch_data.columns else [target_col]

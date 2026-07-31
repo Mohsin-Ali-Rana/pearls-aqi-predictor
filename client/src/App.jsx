@@ -281,16 +281,29 @@ export default function App() {
   // Fetch telemetry from your FastAPI/Python backend endpoint
   const fetchTelemetryData = async () => {
     setIsLoading(true);
-    try {
-      const response = await fetch('http://localhost:8000/api/telemetry');
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-      const data = await response.json();
-      setTelemetry(data);
-    } catch (error) {
-      console.error("Failed to connect to AQI backend endpoint:", error);
-    } finally {
-      setIsLoading(false);
+    const endpoints = [
+      '/api/telemetry',
+      'http://127.0.0.1:8000/api/telemetry',
+      'http://localhost:8000/api/telemetry'
+    ];
+    let success = false;
+    for (const endpoint of endpoints) {
+      try {
+        const response = await fetch(endpoint);
+        if (response.ok) {
+          const data = await response.json();
+          setTelemetry(data);
+          success = true;
+          break;
+        }
+      } catch (error) {
+        // Try next fallback endpoint
+      }
     }
+    if (!success) {
+      console.error("Failed to connect to AQI backend endpoint across all configured URLs.");
+    }
+    setIsLoading(false);
   };
 
   useEffect(() => {
