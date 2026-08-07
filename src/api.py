@@ -140,9 +140,9 @@ async def get_live_telemetry():
         advisory_title, advisory_detail = get_health_advisory(current_aqi)
 
         # 2. Extract multi-horizon 24h, 48h, 72h strategic forecasts
-        f_24h = strategic.get("24h", {"predicted_aqi": 72.2, "status": "Moderate", "rmse": 2.6})
-        f_48h = strategic.get("48h", {"predicted_aqi": 65.8, "status": "Moderate", "rmse": 2.9})
-        f_72h = strategic.get("72h", {"predicted_aqi": 65.8, "status": "Moderate", "rmse": 3.3})
+        f_24h = strategic.get("24h", {"predicted_aqi": 74.0, "status": "Moderate", "rmse": 2.6, "predicted_pm2_5": 23.07})
+        f_48h = strategic.get("48h", {"predicted_aqi": 63.1, "status": "Moderate", "rmse": 2.9, "predicted_pm2_5": 17.88})
+        f_72h = strategic.get("72h", {"predicted_aqi": 55.3, "status": "Moderate", "rmse": 3.3, "predicted_pm2_5": 14.15})
 
         # 3. Build API response payload using live ML outputs
         return TelemetryResponse(
@@ -157,7 +157,7 @@ async def get_live_telemetry():
             healthAdvisory=advisory_title,
             healthDetail=advisory_detail,
             confidenceScore=dynamic_confidence,
-            modelName=f"{ml_output.get('model_name', 'aqi_pm25_predictor')} v{ml_output.get('model_version', 1)}",
+            modelName=f"{ml_output.get('model_name', 'aqi_pm25_predictor')} v{ml_output.get('model_version', 2)}",
             featureStoreStatus="Connected" if ml_output.get("status") == "success" else "Disconnected",
             forecasts=[
                 ForecastHorizon(
@@ -198,9 +198,9 @@ async def get_live_telemetry():
                     aqi=float(round(convert_pm25_to_aqi(tactical[2]["predicted_pm2_5"]), 1)) if len(tactical) > 2 else 65.8,
                     pm25=float(tactical[2]["predicted_pm2_5"]) if len(tactical) > 2 else 19.18
                 ),
-                TrendPoint(time="24H Avg", aqi=float(f_24h["predicted_aqi"]), pm25=float(round(f_24h["predicted_aqi"] / 3.2, 2))),
-                TrendPoint(time="48H Avg", aqi=float(f_48h["predicted_aqi"]), pm25=float(round(f_48h["predicted_aqi"] / 3.2, 2))),
-                TrendPoint(time="72H Avg", aqi=float(f_72h["predicted_aqi"]), pm25=float(round(f_72h["predicted_aqi"] / 3.2, 2))),
+                TrendPoint(time="24H Avg", aqi=float(f_24h["predicted_aqi"]), pm25=float(f_24h.get("predicted_pm2_5", round(f_24h["predicted_aqi"] / 3.2, 2)))),
+                TrendPoint(time="48H Avg", aqi=float(f_48h["predicted_aqi"]), pm25=float(f_48h.get("predicted_pm2_5", round(f_48h["predicted_aqi"] / 3.2, 2)))),
+                TrendPoint(time="72H Avg", aqi=float(f_72h["predicted_aqi"]), pm25=float(f_72h.get("predicted_pm2_5", round(f_72h["predicted_aqi"] / 3.2, 2)))),
             ],
             hotspots=[
                 HotspotStation(id=1, name="1. Primary Monitoring Node", aqi=f"{int(current_aqi)} AQI", color=get_aqi_color(current_aqi), textColor="#FFFFFF"),

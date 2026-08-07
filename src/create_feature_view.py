@@ -1,6 +1,7 @@
 import hopsworks
 import pandas as pd
 from typing import Tuple
+from config import HOPSWORKS_API_KEY, HOPSWORKS_PROJECT, HOPSWORKS_HOST, HOPSWORKS_PORT
 
 def create_feature_view_and_splits() -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
@@ -12,10 +13,10 @@ def create_feature_view_and_splits() -> Tuple[pd.DataFrame, pd.DataFrame, pd.Dat
     # ----------------------------------------------------
     print("Connecting to Hopsworks Feature Store...")
     project = hopsworks.login(
-        project="MA",
-        host="eu-west.cloud.hopsworks.ai",
-        port=443,
-        api_key_value="yC0HPp2g2yuZjpXH.9FmXmXktv80uISKXoBZtImHRILwMNxReE2JhWfWX2oVkBVrBJt4JPV7OQGAbMuDu"  # Replace with your actual key
+        project=HOPSWORKS_PROJECT,
+        host=HOPSWORKS_HOST,
+        port=HOPSWORKS_PORT,
+        api_key_value=HOPSWORKS_API_KEY
     )
     fs = project.get_feature_store()
     

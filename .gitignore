@@ -16,3 +16,5 @@ data/
 *.pkl
 aqi_best_model/
 .env
+.env.*
+!.env.example

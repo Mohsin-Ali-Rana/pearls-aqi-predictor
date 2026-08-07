@@ -3,7 +3,10 @@ import pandas as pd
 import numpy as np
 import hopsworks
 from fetch_raw_data import fetch_historical_aqi
-from config import LOCATION_LATITUDE, LOCATION_LONGITUDE
+from config import (
+    LOCATION_LATITUDE, LOCATION_LONGITUDE,
+    HOPSWORKS_API_KEY, HOPSWORKS_PROJECT, HOPSWORKS_HOST, HOPSWORKS_PORT
+)
 
 def generate_features(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -64,10 +67,10 @@ def run_feature_pipeline():
 
     print("\nConnecting to Hopsworks Feature Store...")
     project = hopsworks.login(
-        project="MA",
-        host="eu-west.cloud.hopsworks.ai",
-        port=443,
-        api_key_value="yC0HPp2g2yuZjpXH.9FmXmXktv80uISKXoBZtImHRILwMNxReE2JhWfWX2oVkBVrBJt4JPV7OQGAbMuDu"  # Kept as is
+        project=HOPSWORKS_PROJECT,
+        host=HOPSWORKS_HOST,
+        port=HOPSWORKS_PORT,
+        api_key_value=HOPSWORKS_API_KEY
     )
     fs = project.get_feature_store()
     

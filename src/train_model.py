@@ -5,7 +5,8 @@ import numpy as np
 import xgboost as xgb
 import lightgbm as lgb
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
+from config import HOPSWORKS_API_KEY, HOPSWORKS_PROJECT, HOPSWORKS_HOST, HOPSWORKS_PORT
 
 def train_evaluate_and_register_best_model():
     """
@@ -17,10 +18,10 @@ def train_evaluate_and_register_best_model():
     # ----------------------------------------------------
     print("Connecting to Hopsworks Feature Store...")
     project = hopsworks.login(
-        project="MA",
-        host="eu-west.cloud.hopsworks.ai",
-        port=443,
-        api_key_value="yC0HPp2g2yuZjpXH.9FmXmXktv80uISKXoBZtImHRILwMNxReE2JhWfWX2oVkBVrBJt4JPV7OQGAbMuDu"  # Replace with your actual key
+        project=HOPSWORKS_PROJECT,
+        host=HOPSWORKS_HOST,
+        port=HOPSWORKS_PORT,
+        api_key_value=HOPSWORKS_API_KEY
     )
     fs = project.get_feature_store()
     
@@ -70,11 +71,12 @@ def train_evaluate_and_register_best_model():
         predictions = model.predict(X_test)
         mse = mean_squared_error(y_test, predictions)
         rmse = np.sqrt(mse)
+        mae = mean_absolute_error(y_test, predictions)   # 1. Calculate MAE
         r2 = r2_score(y_test, predictions)
         
-        results[name] = {"rmse": float(rmse), "r2": float(r2)}
+        results[name] = {"rmse": float(rmse),"mae": float(mae), "r2": float(r2)}
         trained_models[name] = model
-        print(f"  └─ {name} -> RMSE: {rmse:.4f} | R2: {r2:.4f}")
+        print(f"  └─ {name} -> RMSE: {rmse:.4f} | MAE: {mae:.4f} | R2: {r2:.4f}")
         
     # ----------------------------------------------------
     # 4. Select the Winner (Lowest RMSE)
