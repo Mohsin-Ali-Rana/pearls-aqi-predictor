@@ -59,7 +59,7 @@ def create_feature_view_and_splits() -> Tuple[pd.DataFrame, pd.DataFrame, pd.Dat
     
     # Separate input predictors (X) from the ground-truth label (y)
     target_col = "pm2_5"
-    feature_cols = [col for col in df.columns if col != target_col]
+    feature_cols = [col for col in df.columns if col not in [target_col, "time"]]
     
     X_train = train_df[feature_cols]
     y_train = train_df[[target_col]]

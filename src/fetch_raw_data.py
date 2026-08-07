@@ -1,12 +1,18 @@
 import requests
 import pandas as pd
-from config import LOCATION_LATITUDE, LOCATION_LONGITUDE, OPEN_METEO_AQI_URL
+from requests.adapters import HTTPAdapter
+from urllib3.util import Retry
+
+try:
+    from config import LOCATION_LATITUDE, LOCATION_LONGITUDE, OPEN_METEO_AQI_URL
+except ImportError:
+    from src.config import LOCATION_LATITUDE, LOCATION_LONGITUDE, OPEN_METEO_AQI_URL
 
 def fetch_historical_aqi(lat: float, lon: float, start_date: str, end_date: str) -> pd.DataFrame:
     """
     Fetches historical hourly air quality data from Open-Meteo and returns a Pandas DataFrame.
+    Includes explicit timeouts and exponential backoff retry strategy.
     """
-    # 1. Define the API parameters
     params = {
         "latitude": lat,
         "longitude": lon,
@@ -16,22 +22,21 @@ def fetch_historical_aqi(lat: float, lon: float, start_date: str, end_date: str)
         "timezone": "auto"
     }
     
-    # 2. Execute the HTTP GET request
+    session = requests.Session()
+    retries = Retry(total=3, backoff_factor=1.0, status_forcelist=[429, 500, 502, 503, 504])
+    session.mount("https://", HTTPAdapter(max_retries=retries))
+    session.mount("http://", HTTPAdapter(max_retries=retries))
+
     print(f"Pinging Open-Meteo API for coordinates ({lat}, {lon})...")
-    response = requests.get(OPEN_METEO_AQI_URL, params=params)
-    
-    # 3. Exception Handling: Safely crash if the API rejects our request
+    response = session.get(OPEN_METEO_AQI_URL, params=params, timeout=(5.0, 25.0))
     response.raise_for_status() 
     
-    # 4. Parse the JSON payload
     data = response.json()
     hourly_data = data.get("hourly", {})
     
-    # 5. Transform into a structured DataFrame
     df = pd.DataFrame(hourly_data)
-    
-    # 6. Type Casting: Convert the raw time string into a mathematical datetime object
-    df['time'] = pd.to_datetime(df['time'])
+    if not df.empty and 'time' in df.columns:
+        df['time'] = pd.to_datetime(df['time'])
     
     return df
 

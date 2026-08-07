@@ -9,6 +9,9 @@ load_dotenv(dotenv_path=env_path)
 
 # Hopsworks Credentials & Configuration
 HOPSWORKS_API_KEY = os.getenv("HOPSWORKS_API_KEY")
+if not HOPSWORKS_API_KEY:
+    raise EnvironmentError("HOPSWORKS_API_KEY is not configured in .env or system environment.")
+
 HOPSWORKS_PROJECT = os.getenv("HOPSWORKS_PROJECT", "MA")
 HOPSWORKS_HOST = os.getenv("HOPSWORKS_HOST", "eu-west.cloud.hopsworks.ai")
 HOPSWORKS_PORT = int(os.getenv("HOPSWORKS_PORT", 443))

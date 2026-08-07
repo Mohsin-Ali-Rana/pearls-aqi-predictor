@@ -154,13 +154,13 @@ def run_inference():
                 step_features[col] = eqi_hist[-24] if len(eqi_hist) >= 24 else eqi_hist[-1]
             # 4. Update rolling window statistics
             elif col == "pm2_5_rolling_6h_mean":
-                step_features[col] = float(np.mean(pm25_hist[-6:]))
+                step_features[col] = float(np.mean(pm25_hist[-6:])) if len(pm25_hist) > 0 else 18.73
             elif col == "pm2_5_rolling_24h_mean":
-                step_features[col] = float(np.mean(pm25_hist[-24:]))
+                step_features[col] = float(np.mean(pm25_hist[-24:])) if len(pm25_hist) > 0 else 18.73
             elif col == "pm10_rolling_6h_mean":
-                step_features[col] = float(np.mean(pm10_hist[-6:]))
+                step_features[col] = float(np.mean(pm10_hist[-6:])) if len(pm10_hist) > 0 else 30.0
             elif col == "pm10_rolling_24h_mean":
-                step_features[col] = float(np.mean(pm10_hist[-24:]))
+                step_features[col] = float(np.mean(pm10_hist[-24:])) if len(pm10_hist) > 0 else 30.0
             # 5. Update derived pollution velocity
             elif col == "aqi_change_rate":
                 eqi_1h = eqi_hist[-1]
@@ -182,9 +182,9 @@ def run_inference():
                 match = re.search(r"(\d+)h", col)
                 win = int(match.group(1)) if match else 6
                 if "pm2_5" in col:
-                    step_features[col] = float(np.mean(pm25_hist[-win:]))
+                    step_features[col] = float(np.mean(pm25_hist[-win:])) if len(pm25_hist) > 0 else 18.73
                 elif "pm10" in col:
-                    step_features[col] = float(np.mean(pm10_hist[-win:]))
+                    step_features[col] = float(np.mean(pm10_hist[-win:])) if len(pm10_hist) > 0 else 30.0
                 else:
                     step_features[col] = float(X_latest[col].values[0]) if col in X_latest.columns else 0.0
             elif col == "pm10":
@@ -194,8 +194,16 @@ def run_inference():
             else:
                 step_features[col] = float(X_latest[col].values[0]) if col in X_latest.columns else 0.0
 
-        # Construct single-row input DataFrame with column ordering matching model expectation
-        step_input_df = pd.DataFrame([step_features])[feature_cols]
+        # Construct single-row input DataFrame and enforce strict feature column ordering matching model expectation
+        step_input_df = pd.DataFrame([step_features])
+        if hasattr(model, "feature_names_in_"):
+            model_cols = list(model.feature_names_in_)
+            step_input_df = step_input_df.reindex(columns=model_cols, fill_value=0.0)
+        elif hasattr(model, "feature_name"):
+            model_cols = model.feature_name()
+            step_input_df = step_input_df.reindex(columns=model_cols, fill_value=0.0)
+        else:
+            step_input_df = step_input_df[feature_cols]
 
         # Predict next PM2.5 concentration
         if hasattr(model, "predict"):

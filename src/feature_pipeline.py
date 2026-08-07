@@ -63,6 +63,8 @@ def run_feature_pipeline():
     
     print("Engineering features...")
     feature_df = generate_features(raw_df)
+    if feature_df.empty:
+        raise ValueError("Engineered feature set is empty after lag computation. Insufficient historical rows fetched.")
     feature_df["time"] = pd.to_datetime(feature_df["time"])
 
     print("\nConnecting to Hopsworks Feature Store...")
