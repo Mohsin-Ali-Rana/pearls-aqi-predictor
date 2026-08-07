@@ -4,8 +4,13 @@ from pydantic import BaseModel
 from typing import List, Optional
 import uvicorn
 
-# Import the actual working inference function from your src/inference.py file
-from src.inference import run_inference
+# Import the actual working inference function and utilities
+try:
+    from src.inference import run_inference
+    from src.utils import convert_pm25_to_aqi, get_aqi_status
+except ImportError:
+    from inference import run_inference
+    from utils import convert_pm25_to_aqi, get_aqi_status
 
 app = FastAPI(
     title="PEARLS AQI Predictor API",
@@ -78,30 +83,6 @@ def get_aqi_color(aqi_val: float) -> str:
         return "#EF4444"  # Red
     return "#8B5CF6"      # Purple
 
-def convert_pm25_to_aqi(pm25: float) -> float:
-    if pm25 <= 12.0:
-        return (50 / 12.0) * pm25
-    elif pm25 <= 35.4:
-        return 51 + ((49 / 23.4) * (pm25 - 12.1))
-    elif pm25 <= 55.4:
-        return 101 + ((49 / 19.9) * (pm25 - 35.5))
-    elif pm25 <= 150.4:
-        return 151 + ((49 / 94.9) * (pm25 - 55.5))
-    else:
-        return 201 + ((99 / 99.9) * (pm25 - 150.5))
-
-def get_aqi_status(aqi_val: float) -> str:
-    if aqi_val <= 50:
-        return "Good"
-    elif aqi_val <= 100:
-        return "Moderate"
-    elif aqi_val <= 150:
-        return "Unhealthy for Sensitive Groups"
-    elif aqi_val <= 200:
-        return "Unhealthy"
-    else:
-        return "Very Unhealthy"
-
 def get_health_advisory(aqi_val: float) -> tuple[str, str]:
     if aqi_val <= 50:
         return "Good Air Quality", "Air quality is considered satisfactory, and air pollution poses little or no risk."
@@ -113,7 +94,7 @@ def get_health_advisory(aqi_val: float) -> tuple[str, str]:
 
 
 @app.get("/api/telemetry", response_model=TelemetryResponse)
-async def get_live_telemetry():
+def get_live_telemetry():
     """
     Main endpoint called by the React frontend.
     Executes inference engine and returns dynamic predictions.

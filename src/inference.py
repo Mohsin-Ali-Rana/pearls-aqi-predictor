@@ -4,33 +4,12 @@ import hopsworks
 import pandas as pd
 import numpy as np
 import joblib
-from config import HOPSWORKS_API_KEY, HOPSWORKS_PROJECT, HOPSWORKS_HOST, HOPSWORKS_PORT
-
-def convert_pm25_to_aqi(pm25: float) -> float:
-    """Maps PM2.5 concentrations to US EPA AQI standard range."""
-    if pm25 <= 12.0:
-        return (50 / 12.0) * pm25
-    elif pm25 <= 35.4:
-        return 51 + ((49 / 23.4) * (pm25 - 12.1))
-    elif pm25 <= 55.4:
-        return 101 + ((49 / 19.9) * (pm25 - 35.5))
-    elif pm25 <= 150.4:
-        return 151 + ((49 / 94.9) * (pm25 - 55.5))
-    else:
-        return 201 + ((99 / 99.9) * (pm25 - 150.5))
-
-def get_aqi_status(aqi_val: float) -> str:
-    """Returns EPA human-readable health category for a given AQI value."""
-    if aqi_val <= 50:
-        return "Good"
-    elif aqi_val <= 100:
-        return "Moderate"
-    elif aqi_val <= 150:
-        return "Unhealthy for Sensitive Groups"
-    elif aqi_val <= 200:
-        return "Unhealthy"
-    else:
-        return "Very Unhealthy"
+try:
+    from config import HOPSWORKS_API_KEY, HOPSWORKS_PROJECT, HOPSWORKS_HOST, HOPSWORKS_PORT
+    from utils import convert_pm25_to_aqi, get_aqi_status
+except ImportError:
+    from src.config import HOPSWORKS_API_KEY, HOPSWORKS_PROJECT, HOPSWORKS_HOST, HOPSWORKS_PORT
+    from src.utils import convert_pm25_to_aqi, get_aqi_status
 
 def run_inference():
     """
@@ -49,9 +28,9 @@ def run_inference():
     mr = project.get_model_registry()
     print("Fetching latest version of 'aqi_pm25_predictor' model...")
     
-    # Grab all versions of the model and select the latest one [-1]
+    # Grab all versions of the model and select the latest highest version number
     models = mr.get_models("aqi_pm25_predictor")
-    model_meta = models[-1] 
+    model_meta = max(models, key=lambda m: int(m.version))
     
     print(f"Loaded Model Version: {model_meta.version}")
     model_dir = model_meta.download()
@@ -230,7 +209,8 @@ def run_inference():
 
         # Update historical buffers for subsequent recursive steps
         pm25_hist.append(pred_pm25)
-        pm10_ratio = (pm10_hist[-1] / (pm25_hist[-2] + 1e-5)) if pm25_hist[-2] > 0 else 1.6
+        prev_pm25 = pm25_hist[-2] if len(pm25_hist) >= 2 else pm25_hist[-1]
+        pm10_ratio = (pm10_hist[-1] / (prev_pm25 + 1e-5)) if prev_pm25 > 0 else 1.6
         pm10_hist.append(pred_pm25 * max(1.0, min(3.0, pm10_ratio)))
         eqi_hist.append(convert_pm25_to_aqi(pred_pm25))
 
