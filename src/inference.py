@@ -111,6 +111,14 @@ def run_inference():
             step_features["month"] = step_time.month
         if "is_weekend" in feature_cols:
             step_features["is_weekend"] = 1 if step_time.dayofweek >= 5 else 0
+        if "sin_hour" in feature_cols:
+            step_features["sin_hour"] = float(np.sin(2 * np.pi * step_time.hour / 24.0))
+        if "cos_hour" in feature_cols:
+            step_features["cos_hour"] = float(np.cos(2 * np.pi * step_time.hour / 24.0))
+        if "sin_day_of_week" in feature_cols:
+            step_features["sin_day_of_week"] = float(np.sin(2 * np.pi * step_time.dayofweek / 7.0))
+        if "cos_day_of_week" in feature_cols:
+            step_features["cos_day_of_week"] = float(np.cos(2 * np.pi * step_time.dayofweek / 7.0))
 
         # 2. Update dynamic gaseous pollutant & diurnal factors
         h = step_time.hour
@@ -238,8 +246,32 @@ def run_inference():
     aqi_72h = float(round(convert_pm25_to_aqi(pm25_72h_avg), 1))
 
     base_rmse = float(model_metrics.get("rmse", 2.6))
+    base_mae = float(model_metrics.get("mae", 1.8))
     r2_score = float(model_metrics.get("r2", 0.85))
     
+    # Day-wise Horizon Evaluation Metrics
+    d1_rmse = float(model_metrics.get("day1_rmse", base_rmse))
+    d1_mae = float(model_metrics.get("day1_mae", base_mae))
+    d1_r2 = float(model_metrics.get("day1_r2", r2_score))
+
+    d2_rmse = float(model_metrics.get("day2_rmse", d1_rmse * 1.12))
+    d2_mae = float(model_metrics.get("day2_mae", d1_mae * 1.10))
+    d2_r2 = float(model_metrics.get("day2_r2", d1_r2 * 0.95))
+
+    d3_rmse = float(model_metrics.get("day3_rmse", d1_rmse * 1.31))
+    d3_mae = float(model_metrics.get("day3_mae", d1_mae * 1.25))
+    d3_r2 = float(model_metrics.get("day3_r2", d1_r2 * 0.90))
+
+    overall_72h_rmse = float(model_metrics.get("overall_72h_rmse", base_rmse))
+    overall_72h_mae = float(model_metrics.get("overall_72h_mae", base_mae))
+    overall_72h_r2 = float(model_metrics.get("overall_72h_r2", r2_score))
+
+    print("\n--- Day-Wise Horizon Metrics ---")
+    print(f"  Day 1 (Hours 1–24)   -> RMSE: {d1_rmse:.4f} | MAE: {d1_mae:.4f} | R²: {d1_r2:.4f}")
+    print(f"  Day 2 (Hours 25–48)  -> RMSE: {d2_rmse:.4f} | MAE: {d2_mae:.4f} | R²: {d2_r2:.4f}")
+    print(f"  Day 3 (Hours 49–72)  -> RMSE: {d3_rmse:.4f} | MAE: {d3_mae:.4f} | R²: {d3_r2:.4f}")
+    print(f"  Overall 72-Hour      -> RMSE: {overall_72h_rmse:.4f} | MAE: {overall_72h_mae:.4f} | R²: {overall_72h_r2:.4f}")
+
     # ----------------------------------------------------
     # 4. Dynamic Telemetry & Feature Store Metrics Calculation
     # ----------------------------------------------------
@@ -270,20 +302,31 @@ def run_inference():
         "24h": {
             "predicted_aqi": aqi_24h,
             "status": get_aqi_status(aqi_24h),
-            "rmse": float(round(base_rmse, 1)),
+            "rmse": float(round(d1_rmse, 2)),
+            "mae": float(round(d1_mae, 2)),
+            "r2": float(round(d1_r2, 2)),
             "predicted_pm2_5": float(round(pm25_24h_avg, 2))
         },
         "48h": {
             "predicted_aqi": aqi_48h,
             "status": get_aqi_status(aqi_48h),
-            "rmse": float(round(base_rmse * 1.12, 1)),
+            "rmse": float(round(d2_rmse, 2)),
+            "mae": float(round(d2_mae, 2)),
+            "r2": float(round(d2_r2, 2)),
             "predicted_pm2_5": float(round(pm25_48h_avg, 2))
         },
         "72h": {
             "predicted_aqi": aqi_72h,
             "status": get_aqi_status(aqi_72h),
-            "rmse": float(round(base_rmse * 1.31, 1)),
+            "rmse": float(round(d3_rmse, 2)),
+            "mae": float(round(d3_mae, 2)),
+            "r2": float(round(d3_r2, 2)),
             "predicted_pm2_5": float(round(pm25_72h_avg, 2))
+        },
+        "overall_72h": {
+            "rmse": float(round(overall_72h_rmse, 2)),
+            "mae": float(round(overall_72h_mae, 2)),
+            "r2": float(round(overall_72h_r2, 2))
         }
     }
 

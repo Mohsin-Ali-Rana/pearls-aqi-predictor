@@ -2,11 +2,18 @@ from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
 import hopsworks
-from fetch_raw_data import fetch_historical_aqi
-from config import (
-    LOCATION_LATITUDE, LOCATION_LONGITUDE,
-    HOPSWORKS_API_KEY, HOPSWORKS_PROJECT, HOPSWORKS_HOST, HOPSWORKS_PORT
-)
+try:
+    from fetch_raw_data import fetch_historical_aqi
+    from config import (
+        LOCATION_LATITUDE, LOCATION_LONGITUDE,
+        HOPSWORKS_API_KEY, HOPSWORKS_PROJECT, HOPSWORKS_HOST, HOPSWORKS_PORT
+    )
+except ImportError:
+    from src.fetch_raw_data import fetch_historical_aqi
+    from src.config import (
+        LOCATION_LATITUDE, LOCATION_LONGITUDE,
+        HOPSWORKS_API_KEY, HOPSWORKS_PROJECT, HOPSWORKS_HOST, HOPSWORKS_PORT
+    )
 
 def generate_features(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -24,6 +31,12 @@ def generate_features(df: pd.DataFrame) -> pd.DataFrame:
     df['day_of_week'] = df['time'].dt.dayofweek
     df['month'] = df['time'].dt.month
     df['is_weekend'] = (df['day_of_week'] >= 5).astype(int)
+    
+    # Continuous trigonometric time features
+    df['sin_hour'] = np.sin(2 * np.pi * df['hour'] / 24.0)
+    df['cos_hour'] = np.cos(2 * np.pi * df['hour'] / 24.0)
+    df['sin_day_of_week'] = np.sin(2 * np.pi * df['day_of_week'] / 7.0)
+    df['cos_day_of_week'] = np.cos(2 * np.pi * df['day_of_week'] / 7.0)
     
     # ----------------------------------------------------
     # 2. Lag Features (Historical Memory)
@@ -86,6 +99,21 @@ def run_feature_pipeline():
         description="Hourly engineered air quality and pollutant features"
     )
     
+    # Sync schema for any new engineered features (e.g. continuous sin/cos time features)
+    existing_feat_names = [f.name for f in aqi_fg.features]
+    new_features = []
+    from hsfs.feature import Feature
+    for col in feature_df.columns:
+        if col not in existing_feat_names:
+            dtype = "double" if feature_df[col].dtype in ['float64', 'float32', 'float'] else "bigint"
+            new_features.append(Feature(col, dtype))
+    if new_features:
+        print(f"Schema Migration: Appending new feature(s) to Hopsworks Feature Group: {[f.name for f in new_features]}...")
+        try:
+            aqi_fg.append_features(new_features)
+        except Exception as e:
+            print(f"Note on append_features: {e}")
+
     print("Persisting data to Hopsworks...")
     aqi_fg.insert(feature_df, storage="online", wait=True)
         
