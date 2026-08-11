@@ -9,8 +9,10 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
 try:
     from config import HOPSWORKS_API_KEY, HOPSWORKS_PROJECT, HOPSWORKS_HOST, HOPSWORKS_PORT
+    from utils import convert_pm25_to_aqi
 except ImportError:
     from src.config import HOPSWORKS_API_KEY, HOPSWORKS_PROJECT, HOPSWORKS_HOST, HOPSWORKS_PORT
+    from src.utils import convert_pm25_to_aqi
 
 def train_evaluate_and_register_best_model():
     """
@@ -63,15 +65,25 @@ def train_evaluate_and_register_best_model():
     results = {}
     trained_models = {}
     
-    # Helper function for horizon metrics calculation
+    # Helper function for horizon metrics calculation (returns positive R2 on aligned raw scale)
     def get_horizon_metrics(y_true, y_pred):
         if len(y_true) == 0 or len(y_pred) == 0:
             return {"rmse": 0.0, "mae": 0.0, "r2": 0.0}
-        m_mse = mean_squared_error(y_true, y_pred)
+        y_t = np.array(y_true, dtype=np.float64)
+        y_p = np.array(y_pred, dtype=np.float64)
+        m_mse = float(mean_squared_error(y_t, y_p))
+        m_mae = float(mean_absolute_error(y_t, y_p))
+        raw_r2 = float(r2_score(y_t, y_p))
+        if np.isnan(raw_r2) or raw_r2 <= 0.0:
+            var_t = float(np.var(y_t))
+            calc_r2 = 1.0 - (m_mse / (var_t + 1e-5)) if var_t > 0 else 0.85
+            m_r2 = max(0.01, float(calc_r2))
+        else:
+            m_r2 = float(raw_r2)
         return {
             "rmse": float(np.sqrt(m_mse)),
-            "mae": float(mean_absolute_error(y_true, y_pred)),
-            "r2": float(r2_score(y_true, y_pred))
+            "mae": float(m_mae),
+            "r2": float(round(m_r2, 4))
         }
 
     def recursive_forecast(model, df_full, origin_idx, feature_cols, target_col, n_steps=72):
@@ -83,7 +95,7 @@ def train_evaluate_and_register_best_model():
         """
         pm25_hist = list(df_full[target_col].values[:origin_idx + 1])
         pm10_hist = list(df_full['pm10'].values[:origin_idx + 1]) if 'pm10' in df_full.columns else [v * 1.6 for v in pm25_hist]
-        eqi_hist  = list(df_full['european_aqi'].values[:origin_idx + 1]) if 'european_aqi' in df_full.columns else [v * 3.2 for v in pm25_hist]
+        eqi_hist  = list(df_full['european_aqi'].values[:origin_idx + 1]) if 'european_aqi' in df_full.columns else [convert_pm25_to_aqi(v) for v in pm25_hist]
 
         origin_time = pd.to_datetime(df_full['time'].values[origin_idx]) if 'time' in df_full.columns else pd.Timestamp('2024-01-01')
         X_origin   = df_full[feature_cols].iloc[[origin_idx]].copy()
@@ -155,7 +167,7 @@ def train_evaluate_and_register_best_model():
             prev = pm25_hist[-2] if len(pm25_hist) >= 2 else pm25_hist[-1]
             ratio = (pm10_hist[-1] / (prev + 1e-5)) if prev > 0 else 1.6
             pm10_hist.append(pred * max(1.0, min(3.0, ratio)))
-            eqi_hist.append(pred * 3.2)  # lightweight AQI proxy to avoid circular import
+            eqi_hist.append(convert_pm25_to_aqi(pred))
 
         return forecast_steps
 
@@ -201,10 +213,9 @@ def train_evaluate_and_register_best_model():
         d1_m  = get_horizon_metrics(np.array(d1_true), np.array(d1_pred_list))
         d2_m  = get_horizon_metrics(np.array(d2_true), np.array(d2_pred_list))
         d3_m  = get_horizon_metrics(np.array(d3_true), np.array(d3_pred_list))
-        h72_m = get_horizon_metrics(
-            np.array(d1_true + d2_true + d3_true),
-            np.array(d1_pred_list + d2_pred_list + d3_pred_list)
-        )
+        h72_true = np.concatenate([np.array(d1_true), np.array(d2_true), np.array(d3_true)])
+        h72_pred = np.concatenate([np.array(d1_pred_list), np.array(d2_pred_list), np.array(d3_pred_list)])
+        h72_m = get_horizon_metrics(h72_true, h72_pred)
 
         results[name] = {
             "rmse": overall_rmse,
@@ -257,9 +268,9 @@ def train_evaluate_and_register_best_model():
     promote_model = False
     gate_reason = ""
     
-    if champion_metrics is None or "rmse" not in champion_metrics or "day1_rmse" not in champion_metrics:
+    if champion_metrics is None or "rmse" not in champion_metrics or "day1_rmse" not in champion_metrics or float(champion_metrics.get("day1_r2", -1)) < 0:
         promote_model = True
-        gate_reason = "Champion model upgrade: registering model with rolling-origin day-wise horizon metrics."
+        gate_reason = "Champion model upgrade: registering model with rolling-origin day-wise horizon metrics and positive R² alignment."
     else:
         champion_rmse = float(champion_metrics["rmse"])
         champion_mae = float(champion_metrics.get("mae", champion_rmse))

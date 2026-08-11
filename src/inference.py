@@ -1,6 +1,6 @@
 import os
 import re
-import datetime
+from datetime import datetime, timezone
 import hopsworks
 import pandas as pd
 import numpy as np
@@ -70,18 +70,26 @@ def run_inference():
     latest_observation = batch_data.tail(1)
     latest_time = latest_observation['time'].values[0]
     latest_time_dt = pd.to_datetime(latest_time)
-    print(f"Running inference for timestamp: {latest_time_dt}")
+
+    # Convert latest_time_dt explicitly to timezone-aware UTC
+    if latest_time_dt.tzinfo is None:
+        latest_time_utc = latest_time_dt.tz_localize(timezone.utc)
+    else:
+        latest_time_utc = latest_time_dt.tz_convert(timezone.utc)
+
+    now_utc = datetime.now(timezone.utc)
+    print(f"Running inference for timestamp: {latest_time_utc.strftime('%Y-%m-%d %H:%M:%S UTC')}")
 
     # --- Data Freshness Check ---
-    # Warn if the most recent feature store record is older than 3 hours
-    now_utc = datetime.datetime.utcnow()
-    latest_naive = latest_time_dt.tz_localize(None) if latest_time_dt.tzinfo is not None else latest_time_dt
-    data_age_hours = (now_utc - latest_naive.to_pydatetime()).total_seconds() / 3600.0
+    # Compare UTC timestamps explicitly to ensure positive age calculation
+    data_age_seconds = (now_utc - latest_time_utc).total_seconds()
+    data_age_hours = max(0.0, float(round(data_age_seconds / 3600.0, 1)))
     data_is_stale = data_age_hours > 3.0
+
     if data_is_stale:
-        print(f"⚠️  WARNING: Feature store data is {data_age_hours:.1f}h old (threshold: 3h). Setting status to Stale.")
+        print(f"⚠️  WARNING: Feature store data is +{data_age_hours:.1f}h old (threshold: 3h). Setting status to Stale.")
     else:
-        print(f"✅ Feature store data freshness OK: {data_age_hours:.1f}h old.")
+        print(f"✅ Feature store data freshness OK: +{data_age_hours:.1f}h old.")
 
     target_col = "pm2_5"
     drop_cols = [target_col, "time"] if "time" in batch_data.columns else [target_col]
