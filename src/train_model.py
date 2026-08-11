@@ -1,4 +1,5 @@
 import os
+import re
 import hopsworks
 import pandas as pd
 import numpy as np
@@ -73,6 +74,91 @@ def train_evaluate_and_register_best_model():
             "r2": float(r2_score(y_true, y_pred))
         }
 
+    def recursive_forecast(model, df_full, origin_idx, feature_cols, target_col, n_steps=72):
+        """
+        Replicates the inference engine's recursive multi-step forecasting from a fixed
+        origin index. Updates lag/rolling/derived features identically to inference.py so
+        that horizon-depth error measurements are genuine rather than positional row slices.
+        Returns a list of n_steps predicted PM2.5 values.
+        """
+        pm25_hist = list(df_full[target_col].values[:origin_idx + 1])
+        pm10_hist = list(df_full['pm10'].values[:origin_idx + 1]) if 'pm10' in df_full.columns else [v * 1.6 for v in pm25_hist]
+        eqi_hist  = list(df_full['european_aqi'].values[:origin_idx + 1]) if 'european_aqi' in df_full.columns else [v * 3.2 for v in pm25_hist]
+
+        origin_time = pd.to_datetime(df_full['time'].values[origin_idx]) if 'time' in df_full.columns else pd.Timestamp('2024-01-01')
+        X_origin   = df_full[feature_cols].iloc[[origin_idx]].copy()
+
+        forecast_steps = []
+        for step in range(1, n_steps + 1):
+            step_time = origin_time + pd.Timedelta(hours=step)
+            step_features = {}
+
+            # Temporal / cyclical features
+            for col in feature_cols:
+                h = step_time.hour
+                if col == 'hour':            step_features[col] = h
+                elif col == 'day_of_week':   step_features[col] = step_time.dayofweek
+                elif col == 'month':         step_features[col] = step_time.month
+                elif col == 'is_weekend':    step_features[col] = 1 if step_time.dayofweek >= 5 else 0
+                elif col == 'sin_hour':      step_features[col] = float(np.sin(2 * np.pi * h / 24.0))
+                elif col == 'cos_hour':      step_features[col] = float(np.cos(2 * np.pi * h / 24.0))
+                elif col == 'sin_day_of_week': step_features[col] = float(np.sin(2 * np.pi * step_time.dayofweek / 7.0))
+                elif col == 'cos_day_of_week': step_features[col] = float(np.cos(2 * np.pi * step_time.dayofweek / 7.0))
+                elif col == 'pm2_5_lag_1h': step_features[col] = pm25_hist[-1]
+                elif col == 'pm2_5_lag_3h': step_features[col] = pm25_hist[-3] if len(pm25_hist) >= 3 else pm25_hist[-1]
+                elif col == 'pm2_5_lag_24h': step_features[col] = pm25_hist[-24] if len(pm25_hist) >= 24 else pm25_hist[-1]
+                elif col == 'pm10_lag_1h':  step_features[col] = pm10_hist[-1]
+                elif col == 'pm10_lag_3h':  step_features[col] = pm10_hist[-3] if len(pm10_hist) >= 3 else pm10_hist[-1]
+                elif col == 'pm10_lag_24h': step_features[col] = pm10_hist[-24] if len(pm10_hist) >= 24 else pm10_hist[-1]
+                elif col == 'european_aqi_lag_1h': step_features[col] = eqi_hist[-1]
+                elif col == 'european_aqi_lag_3h': step_features[col] = eqi_hist[-3] if len(eqi_hist) >= 3 else eqi_hist[-1]
+                elif col == 'european_aqi_lag_24h': step_features[col] = eqi_hist[-24] if len(eqi_hist) >= 24 else eqi_hist[-1]
+                elif col == 'pm2_5_rolling_6h_mean':  step_features[col] = float(np.mean(pm25_hist[-6:]))
+                elif col == 'pm2_5_rolling_24h_mean': step_features[col] = float(np.mean(pm25_hist[-24:]))
+                elif col == 'pm10_rolling_6h_mean':   step_features[col] = float(np.mean(pm10_hist[-6:]))
+                elif col == 'pm10_rolling_24h_mean':  step_features[col] = float(np.mean(pm10_hist[-24:]))
+                elif col == 'aqi_change_rate':
+                    step_features[col] = float(eqi_hist[-1] - (eqi_hist[-3] if len(eqi_hist) >= 3 else eqi_hist[-1]))
+                elif col == 'pm10':
+                    step_features[col] = pm10_hist[-1]
+                elif col == 'european_aqi':
+                    step_features[col] = eqi_hist[-1]
+                elif '_lag_' in col:
+                    m = re.search(r'(\d+)h', col)
+                    k = int(m.group(1)) if m else 1
+                    if col.startswith('pm2_5'):       step_features[col] = pm25_hist[-k] if len(pm25_hist) >= k else pm25_hist[-1]
+                    elif col.startswith('pm10'):      step_features[col] = pm10_hist[-k] if len(pm10_hist) >= k else pm10_hist[-1]
+                    elif col.startswith('european'): step_features[col] = eqi_hist[-k] if len(eqi_hist) >= k else eqi_hist[-1]
+                    else:                            step_features[col] = float(X_origin[col].values[0]) if col in X_origin.columns else 0.0
+                elif '_rolling_' in col:
+                    m = re.search(r'(\d+)h', col)
+                    w = int(m.group(1)) if m else 6
+                    if 'pm2_5' in col:  step_features[col] = float(np.mean(pm25_hist[-w:]))
+                    elif 'pm10' in col: step_features[col] = float(np.mean(pm10_hist[-w:]))
+                    else:               step_features[col] = float(X_origin[col].values[0]) if col in X_origin.columns else 0.0
+                else:
+                    step_features[col] = float(X_origin[col].values[0]) if col in X_origin.columns else 0.0
+
+            step_df = pd.DataFrame([step_features])
+            if hasattr(model, 'feature_names_in_'):
+                step_df = step_df.reindex(columns=list(model.feature_names_in_), fill_value=0.0)
+            elif hasattr(model, 'feature_name'):
+                step_df = step_df.reindex(columns=model.feature_name(), fill_value=0.0)
+            else:
+                step_df = step_df[feature_cols]
+
+            pred = float(model.predict(step_df)[0] if hasattr(model, 'predict') else model.predict(step_df.values)[0])
+            pred = max(0.1, pred)
+            forecast_steps.append(pred)
+
+            pm25_hist.append(pred)
+            prev = pm25_hist[-2] if len(pm25_hist) >= 2 else pm25_hist[-1]
+            ratio = (pm10_hist[-1] / (prev + 1e-5)) if prev > 0 else 1.6
+            pm10_hist.append(pred * max(1.0, min(3.0, ratio)))
+            eqi_hist.append(pred * 3.2)  # lightweight AQI proxy to avoid circular import
+
+        return forecast_steps
+
     # ----------------------------------------------------
     # 3. Train & Evaluate All Models across Horizons
     # ----------------------------------------------------
@@ -81,42 +167,62 @@ def train_evaluate_and_register_best_model():
         print(f"Training {name}...")
         model.fit(X_train, y_train)
 
+        # --- Overall test-set batch accuracy (for promotion gate) ---
         predictions = model.predict(X_test)
-        overall_mse = mean_squared_error(y_test, predictions)
+        overall_mse  = mean_squared_error(y_test, predictions)
         overall_rmse = float(np.sqrt(overall_mse))
-        overall_mae = float(mean_absolute_error(y_test, predictions))
-        overall_r2 = float(r2_score(y_test, predictions))
+        overall_mae  = float(mean_absolute_error(y_test, predictions))
+        overall_r2   = float(r2_score(y_test, predictions))
 
-        # Horizon metric slicing (Day 1: 1-24, Day 2: 25-48, Day 3: 49-72, Overall 72h)
-        y_test_vals = y_test.values if hasattr(y_test, 'values') else np.array(y_test)
-        d1_m = get_horizon_metrics(y_test_vals[0:min(24, len(y_test_vals))], predictions[0:min(24, len(predictions))])
-        d2_m = get_horizon_metrics(y_test_vals[24:min(48, len(y_test_vals))], predictions[24:min(48, len(predictions))])
-        d3_m = get_horizon_metrics(y_test_vals[48:min(72, len(y_test_vals))], predictions[48:min(72, len(predictions))])
-        h72_m = get_horizon_metrics(y_test_vals[0:min(72, len(y_test_vals))], predictions[0:min(72, len(predictions))])
-        
+        # --- Rolling-origin recursive horizon evaluation ---
+        # Use up to 10 evenly-spaced origins from the test set so the evaluation
+        # stays tractable yet statistically representative.  Each origin produces
+        # a 72-step recursive forecast; true values are drawn from df.
+        print(f"  Running rolling-origin recursive horizon evaluation for {name}...")
+        y_test_vals  = y_test.values if hasattr(y_test, 'values') else np.array(y_test)
+        test_origins = list(range(split_idx, min(split_idx + len(test_df), len(df) - 72)))
+        sampled_origins = test_origins[::max(1, len(test_origins) // 10)][:10]  # up to 10 origins
+
+        d1_true, d1_pred_list = [], []
+        d2_true, d2_pred_list = [], []
+        d3_true, d3_pred_list = [], []
+
+        for origin_idx in sampled_origins:
+            fc = recursive_forecast(model, df, origin_idx, feature_cols, target_col, n_steps=72)
+            true_future = df[target_col].values[origin_idx + 1: origin_idx + 73]
+            n_avail = len(true_future)
+            if n_avail >= 24:
+                d1_true.extend(true_future[0:24]);  d1_pred_list.extend(fc[0:24])
+            if n_avail >= 48:
+                d2_true.extend(true_future[24:48]); d2_pred_list.extend(fc[24:48])
+            if n_avail >= 72:
+                d3_true.extend(true_future[48:72]); d3_pred_list.extend(fc[48:72])
+
+        d1_m  = get_horizon_metrics(np.array(d1_true), np.array(d1_pred_list))
+        d2_m  = get_horizon_metrics(np.array(d2_true), np.array(d2_pred_list))
+        d3_m  = get_horizon_metrics(np.array(d3_true), np.array(d3_pred_list))
+        h72_m = get_horizon_metrics(
+            np.array(d1_true + d2_true + d3_true),
+            np.array(d1_pred_list + d2_pred_list + d3_pred_list)
+        )
+
         results[name] = {
             "rmse": overall_rmse,
-            "mae": overall_mae,
-            "r2": overall_r2,
-            "day1_rmse": d1_m["rmse"],
-            "day1_mae": d1_m["mae"],
-            "day1_r2": d1_m["r2"],
-            "day2_rmse": d2_m["rmse"],
-            "day2_mae": d2_m["mae"],
-            "day2_r2": d2_m["r2"],
-            "day3_rmse": d3_m["rmse"],
-            "day3_mae": d3_m["mae"],
-            "day3_r2": d3_m["r2"],
+            "mae":  overall_mae,
+            "r2":   overall_r2,
+            "day1_rmse": d1_m["rmse"], "day1_mae": d1_m["mae"], "day1_r2": d1_m["r2"],
+            "day2_rmse": d2_m["rmse"], "day2_mae": d2_m["mae"], "day2_r2": d2_m["r2"],
+            "day3_rmse": d3_m["rmse"], "day3_mae": d3_m["mae"], "day3_r2": d3_m["r2"],
             "overall_72h_rmse": h72_m["rmse"],
-            "overall_72h_mae": h72_m["mae"],
-            "overall_72h_r2": h72_m["r2"],
+            "overall_72h_mae":  h72_m["mae"],
+            "overall_72h_r2":   h72_m["r2"],
         }
         trained_models[name] = model
         print(f"  └─ {name} Overall -> RMSE: {overall_rmse:.4f} | MAE: {overall_mae:.4f} | R2: {overall_r2:.4f}")
-        print(f"     Day 1 (Hours 1–24)  -> RMSE: {d1_m['rmse']:.4f} | MAE: {d1_m['mae']:.4f} | R2: {d1_m['r2']:.4f}")
-        print(f"     Day 2 (Hours 25–48) -> RMSE: {d2_m['rmse']:.4f} | MAE: {d2_m['mae']:.4f} | R2: {d2_m['r2']:.4f}")
-        print(f"     Day 3 (Hours 49–72) -> RMSE: {d3_m['rmse']:.4f} | MAE: {d3_m['mae']:.4f} | R2: {d3_m['r2']:.4f}")
-        print(f"     Overall 72-Hour     -> RMSE: {h72_m['rmse']:.4f} | MAE: {h72_m['mae']:.4f} | R2: {h72_m['r2']:.4f}")
+        print(f"     Day 1 Recursive (1–24h)  -> RMSE: {d1_m['rmse']:.4f} | MAE: {d1_m['mae']:.4f} | R2: {d1_m['r2']:.4f}")
+        print(f"     Day 2 Recursive (25–48h) -> RMSE: {d2_m['rmse']:.4f} | MAE: {d2_m['mae']:.4f} | R2: {d2_m['r2']:.4f}")
+        print(f"     Day 3 Recursive (49–72h) -> RMSE: {d3_m['rmse']:.4f} | MAE: {d3_m['mae']:.4f} | R2: {d3_m['r2']:.4f}")
+        print(f"     Overall Recursive 72H    -> RMSE: {h72_m['rmse']:.4f} | MAE: {h72_m['mae']:.4f} | R2: {h72_m['r2']:.4f}")
         
     # ----------------------------------------------------
     # 4. Select Tournament Winner (Lowest Overall RMSE)

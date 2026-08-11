@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Union
 import uvicorn
 
 # Import the actual working inference function and utilities
@@ -32,7 +32,7 @@ class ForecastHorizon(BaseModel):
     aqi: float
     status: str
     color: str
-    rmse: float
+    rmse: Optional[float] = None  # None when rolling-origin metrics not yet stored for this model version
 
 class TrendPoint(BaseModel):
     time: str
@@ -106,26 +106,47 @@ def get_live_telemetry():
         # Extract values calculated by model logic
         tactical = ml_output.get("hourly_tactical", [])
         strategic = ml_output.get("strategic_3_day", {})
-        
+
+        # Guard: if tactical list is empty inference has fundamentally failed —
+        # raise 503 rather than silently serving a hardcoded fallback value.
+        if not tactical:
+            raise HTTPException(
+                status_code=503,
+                detail="Inference engine returned an empty tactical forecast. "
+                       "Hopsworks feature store may be empty or unreachable."
+            )
+
+        # Guard: if any horizon is missing from strategic output raise 503.
+        for horizon_key in ("24h", "48h", "72h"):
+            if horizon_key not in strategic:
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"Inference engine did not return a '{horizon_key}' forecast. "
+                           f"Check inference pipeline logs for errors."
+                )
+
         # Dynamically extract confidence and pipeline metrics
         dynamic_confidence = int(round(float(ml_output.get("forecast_confidence", 94))))
         p_metrics = ml_output.get("pipeline_metrics", {})
-        dynamic_completeness = p_metrics.get("completeness", "100.0%")
-        dynamic_accuracy = p_metrics.get("sensor_accuracy", "98.7%")
-        
-        current_pm25 = float(tactical[0]["predicted_pm2_5"]) if tactical else 18.73
-        
+        dynamic_completeness = p_metrics.get("completeness", "N/A")
+        dynamic_accuracy = p_metrics.get("sensor_accuracy", "N/A")
+
+        current_pm25 = float(tactical[0]["predicted_pm2_5"])
+
         # EPA PM2.5 to AQI conversion for current hour
         current_aqi = round(convert_pm25_to_aqi(current_pm25), 1)
 
         advisory_title, advisory_detail = get_health_advisory(current_aqi)
 
-        # 2. Extract multi-horizon 24h, 48h, 72h strategic forecasts
-        f_24h = strategic.get("24h", {"predicted_aqi": 74.0, "status": "Moderate", "rmse": 2.6, "predicted_pm2_5": 23.07})
-        f_48h = strategic.get("48h", {"predicted_aqi": 63.1, "status": "Moderate", "rmse": 2.9, "predicted_pm2_5": 17.88})
-        f_72h = strategic.get("72h", {"predicted_aqi": 55.3, "status": "Moderate", "rmse": 3.3, "predicted_pm2_5": 14.15})
+        # 2. Extract multi-horizon 24h, 48h, 72h strategic forecasts (no fallback defaults)
+        f_24h = strategic["24h"]
+        f_48h = strategic["48h"]
+        f_72h = strategic["72h"]
 
-        # 3. Build API response payload using live ML outputs
+        # Determine feature store freshness from the staleness flag set by inference.py
+        is_stale = ml_output.get("data_freshness_warning", False)
+        feature_store_status = "Stale" if is_stale else "Connected"
+
         return TelemetryResponse(
             city="Islamabad Capital Territory",
             stationName="Primary Sector Station",
@@ -139,28 +160,28 @@ def get_live_telemetry():
             healthDetail=advisory_detail,
             confidenceScore=dynamic_confidence,
             modelName=f"{ml_output.get('model_name', 'aqi_pm25_predictor')} v{ml_output.get('model_version', 2)}",
-            featureStoreStatus="Connected" if ml_output.get("status") == "success" else "Disconnected",
+            featureStoreStatus=feature_store_status,
             forecasts=[
                 ForecastHorizon(
                     horizon="24H",
                     aqi=float(f_24h["predicted_aqi"]),
                     status=str(f_24h["status"]),
                     color=get_aqi_color(f_24h["predicted_aqi"]),
-                    rmse=float(f_24h["rmse"])
+                    rmse=float(f_24h["rmse"]) if f_24h.get("rmse") is not None else None
                 ),
                 ForecastHorizon(
                     horizon="48H",
                     aqi=float(f_48h["predicted_aqi"]),
                     status=str(f_48h["status"]),
                     color=get_aqi_color(f_48h["predicted_aqi"]),
-                    rmse=float(f_48h["rmse"])
+                    rmse=float(f_48h["rmse"]) if f_48h.get("rmse") is not None else None
                 ),
                 ForecastHorizon(
                     horizon="72H",
                     aqi=float(f_72h["predicted_aqi"]),
                     status=str(f_72h["status"]),
                     color=get_aqi_color(f_72h["predicted_aqi"]),
-                    rmse=float(f_72h["rmse"])
+                    rmse=float(f_72h["rmse"]) if f_72h.get("rmse") is not None else None
                 ),
             ],
             trendHistory=[

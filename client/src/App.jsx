@@ -1,246 +1,6 @@
-// import React, { useState } from 'react';
-// import { 
-//   Activity, ShieldAlert, RefreshCw, MapPin, CheckCircle2, 
-//   TrendingUp, Layers, Cpu, BarChart3, Globe, Database, Settings, LayoutDashboard, Search, Bell, User
-// } from 'lucide-react';
-// import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
-
-// const trendData = [
-//   { time: 'Day 1 (00:00)', aqi: 75, pm25: 22 },
-//   { time: 'Day 1 (12:00)', aqi: 102, pm25: 35 },
-//   { time: 'Day 2 (00:00)', aqi: 95, pm25: 30 },
-//   { time: 'Day 2 (12:00)', aqi: 115, pm25: 42 },
-//   { time: 'Day 3 (00:00)', aqi: 110, pm25: 39 },
-//   { time: 'Day 3 (12:00)', aqi: 120, pm25: 45 },
-//   { time: 'Current', aqi: 83, pm25: 31.4 },
-// ];
-
-// export default function App() {
-//   const [isRefreshing, setIsRefreshing] = useState(false);
-//   const [activeNav, setActiveNav] = useState('dashboard');
-
-//   const handleRefresh = () => {
-//     setIsRefreshing(true);
-//     setTimeout(() => setIsRefreshing(false), 1200);
-//   };
-
-//   return (
-//     <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#F8FAFC', color: '#0F172A', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
-      
-//       {/* Exact Sidebar from Your Mockup */}
-//       <aside style={{ width: '260px', backgroundColor: '#0B132B', color: '#F8FAFC', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '1.5rem', borderRight: '1px solid #1E293B', position: 'fixed', height: '100vh', boxSizing: 'border-box' }}>
-//         <div>
-//           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '2rem', paddingBottom: '1rem', borderBottom: '1px solid #1E293B' }}>
-//             <div style={{ backgroundColor: 'rgba(56, 189, 248, 0.15)', padding: '0.5rem', borderRadius: '0.5rem', border: '1px solid rgba(56, 189, 248, 0.3)' }}>
-//               <Activity size={22} color="#38BDF8" />
-//             </div>
-//             <div>
-//               <h2 style={{ fontSize: '1rem', fontWeight: '800', margin: 0, letterSpacing: '0.05em' }}>PEARLS AQI</h2>
-//               <span style={{ fontSize: '0.65rem', color: '#38BDF8', fontWeight: '600', letterSpacing: '0.08em' }}>AIR INTELLIGENCE</span>
-//             </div>
-//           </div>
-
-//           <nav style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-//             <button onClick={() => setActiveNav('dashboard')} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', width: '100%', padding: '0.75rem 1rem', borderRadius: '0.5rem', backgroundColor: activeNav === 'dashboard' ? '#0284C7' : 'transparent', color: activeNav === 'dashboard' ? '#FFFFFF' : '#94A3B8', border: 'none', cursor: 'pointer', fontWeight: '600', fontSize: '0.85rem', textAlign: 'left' }}>
-//               <LayoutDashboard size={16} /> Dashboard
-//             </button>
-//             <button onClick={() => setActiveNav('regional')} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', width: '100%', padding: '0.75rem 1rem', borderRadius: '0.5rem', backgroundColor: activeNav === 'regional' ? '#0284C7' : 'transparent', color: activeNav === 'regional' ? '#FFFFFF' : '#94A3B8', border: 'none', cursor: 'pointer', fontWeight: '600', fontSize: '0.85rem', textAlign: 'left' }}>
-//               <Globe size={16} /> Regional Analysis
-//             </button>
-//             <button onClick={() => setActiveNav('models')} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', width: '100%', padding: '0.75rem 1rem', borderRadius: '0.5rem', backgroundColor: activeNav === 'models' ? '#0284C7' : 'transparent', color: activeNav === 'models' ? '#FFFFFF' : '#94A3B8', border: 'none', cursor: 'pointer', fontWeight: '600', fontSize: '0.85rem', textAlign: 'left' }}>
-//               <Cpu size={16} /> Prediction Models
-//             </button>
-//             <button onClick={() => setActiveNav('sources')} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', width: '100%', padding: '0.75rem 1rem', borderRadius: '0.5rem', backgroundColor: activeNav === 'sources' ? '#0284C7' : 'transparent', color: activeNav === 'sources' ? '#FFFFFF' : '#94A3B8', border: 'none', cursor: 'pointer', fontWeight: '600', fontSize: '0.85rem', textAlign: 'left' }}>
-//               <Database size={16} /> Data Sources
-//             </button>
-//             <button onClick={() => setActiveNav('settings')} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', width: '100%', padding: '0.75rem 1rem', borderRadius: '0.5rem', backgroundColor: activeNav === 'settings' ? '#0284C7' : 'transparent', color: activeNav === 'settings' ? '#FFFFFF' : '#94A3B8', border: 'none', cursor: 'pointer', fontWeight: '600', fontSize: '0.85rem', textAlign: 'left' }}>
-//               <Settings size={16} /> Settings
-//             </button>
-//           </nav>
-//         </div>
-
-//         {/* User Profile Footer */}
-//         <div style={{ backgroundColor: '#1C2541', padding: '0.75rem 1rem', borderRadius: '0.75rem', border: '1px solid #334155', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-//           <div style={{ backgroundColor: '#0284C7', width: '32px', height: '32px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '0.8rem', color: '#FFFFFF' }}>MA</div>
-//           <div>
-//             <div style={{ fontSize: '0.8rem', fontWeight: '700', color: '#FFFFFF' }}>M. Ali - Admin</div>
-//             <div style={{ fontSize: '0.65rem', color: '#34D399' }}>● Active Online</div>
-//           </div>
-//         </div>
-//       </aside>
-
-//       {/* Main Content Area */}
-//       <main style={{ marginLeft: '260px', flex: 1, padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem', boxSizing: 'border-box' }}>
-        
-//         {/* Top Header Bar from Mockup */}
-//         <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#FFFFFF', padding: '0.85rem 1.5rem', borderRadius: '1rem', border: '1px solid #E2E8F0', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
-//           <div style={{ fontSize: '0.9rem', fontWeight: '600', color: '#64748B' }}>
-//             Pearls Air Quality Intelligence Platform
-//           </div>
-
-//           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', width: '40%' }}>
-//             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: '#F8FAFC', padding: '0.4rem 0.75rem', borderRadius: '0.5rem', border: '1px solid #CBD5E1', width: '100%', fontSize: '0.8rem', color: '#64748B' }}>
-//               <Search size={14} />
-//               <span>Global Search</span>
-//             </div>
-//           </div>
-
-//           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-//             <Bell size={18} color="#64748B" style={{ cursor: 'pointer' }} />
-//             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', borderLeft: '1px solid #E2E8F0', paddingLeft: '1rem' }}>
-//               <div style={{ backgroundColor: '#0284C7', color: 'white', width: '28px', height: '28px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 'bold' }}>MA</div>
-//             </div>
-//           </div>
-//         </header>
-
-//         {/* Dashboard Title & Filter Controls Bar */}
-//         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-//           <h2 style={{ fontSize: '1.35rem', fontWeight: '800', margin: 0, color: '#0F172A' }}>Dashboard Overview</h2>
-          
-//           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-//             <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #CBD5E1', padding: '0.4rem 0.8rem', borderRadius: '0.5rem', fontSize: '0.8rem', fontWeight: '500', color: '#334155' }}>
-//               📅 Last 7 Days
-//             </div>
-//             <div style={{ backgroundColor: '#FFFFFF', border: '1px solid #CBD5E1', padding: '0.4rem 0.8rem', borderRadius: '0.5rem', fontSize: '0.8rem', fontWeight: '500', color: '#334155' }}>
-//               📍 Region: Akora Khattak Node
-//             </div>
-//             <div style={{ backgroundColor: '#DCFCE7', border: '1px solid #86EFAC', padding: '0.4rem 0.8rem', borderRadius: '0.5rem', fontSize: '0.75rem', fontWeight: '700', color: '#166534', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-//               <span style={{ width: '8px', height: '8px', backgroundColor: '#22C55E', borderRadius: '50%', display: 'inline-block' }}></span>
-//               Live Data Feed: Active
-//             </div>
-//           </div>
-//         </div>
-
-//         {/* Top 4 Metrics Cards (Matching Your Mockup Exact Layout) */}
-//         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1.25rem' }}>
-          
-//           {/* Card 1: Current AQI */}
-//           <div style={{ backgroundColor: '#FFFFFF', padding: '1.25rem', borderRadius: '1rem', border: '1px solid #E2E8F0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-//             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-//               <span style={{ fontSize: '0.8rem', fontWeight: '700', color: '#0F172A' }}>Current AQI</span>
-//               <RefreshCw size={14} color="#94A3B8" onClick={handleRefresh} style={{ cursor: 'pointer' }} className={isRefreshing ? 'animate-spin' : ''} />
-//             </div>
-//             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0.5rem 0' }}>
-//               <div style={{ textAlign: 'center' }}>
-//                 <div style={{ fontSize: '2.5rem', fontWeight: '900', color: '#10B981', lineHeight: '1' }}>83</div>
-//                 <div style={{ fontSize: '0.75rem', fontWeight: '700', color: '#10B981', marginTop: '0.3rem' }}>Moderate Air Quality</div>
-//               </div>
-//             </div>
-//             <span style={{ fontSize: '0.65rem', color: '#64748B', textAlign: 'center' }}>Updated via Hopsworks Store</span>
-//           </div>
-
-//           {/* Card 2: Main Pollutant */}
-//           <div style={{ backgroundColor: '#FFFFFF', padding: '1.25rem', borderRadius: '1rem', border: '1px solid #E2E8F0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-//             <div>
-//               <span style={{ fontSize: '0.8rem', fontWeight: '700', color: '#0F172A' }}>Main Pollutant</span>
-//               <div style={{ fontSize: '0.85rem', fontWeight: '700', color: '#0F172A', marginTop: '0.4rem' }}>PM2.5 Concentration</div>
-//               <div style={{ fontSize: '0.75rem', color: '#64748B' }}>31.4 µg/m³</div>
-//             </div>
-//             <div style={{ fontSize: '0.7rem', color: '#0284C7', fontWeight: '600', marginTop: '0.5rem' }}>WHO guideline compliant</div>
-//           </div>
-
-//           {/* Card 3: Health Advisory */}
-//           <div style={{ backgroundColor: '#FFFFFF', padding: '1.25rem', borderRadius: '1rem', border: '1px solid #E2E8F0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-//             <div>
-//               <span style={{ fontSize: '0.8rem', fontWeight: '700', color: '#0F172A' }}>Health Advisory</span>
-//               <div style={{ fontSize: '0.8rem', fontWeight: '700', color: '#D97706', marginTop: '0.4rem' }}>Acceptable for outdoor activities</div>
-//             </div>
-//             <div style={{ fontSize: '0.7rem', color: '#64748B', marginTop: '0.5rem' }}>Sensitive groups limit prolonged exertion</div>
-//           </div>
-
-//           {/* Card 4: Forecast Confidence */}
-//           <div style={{ backgroundColor: '#FFFFFF', padding: '1.25rem', borderRadius: '1rem', border: '1px solid #E2E8F0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-//             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-//               <span style={{ fontSize: '0.8rem', fontWeight: '700', color: '#0F172A' }}>Forecast Confidence</span>
-//               <span style={{ fontSize: '1.25rem', fontWeight: '900', color: '#0284C7' }}>94%</span>
-//             </div>
-//             <div style={{ fontSize: '0.7rem', color: '#64748B', marginTop: '1rem' }}>Powered by Hopsworks Model Registry</div>
-//           </div>
-
-//         </div>
-
-//         {/* 3-Day AQI Forecast & Trends Chart Section (Exact Match to Mockup) */}
-//         <div style={{ backgroundColor: '#FFFFFF', padding: '1.5rem', borderRadius: '1rem', border: '1px solid #E2E8F0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)' }}>
-//           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-//             <h3 style={{ fontSize: '0.95rem', fontWeight: '800', color: '#0F172A', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-//               <Layers size={18} color="#0284C7" /> 3-Day AQI Forecast & Trends (24H / 48H / 72H Multi-Horizon)
-//             </h3>
-//             <span style={{ fontSize: '0.75rem', color: '#047857', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-//               🌿 Hopsworks Feature Store Connected
-//             </span>
-//           </div>
-
-//           <div style={{ height: '220px', width: '100%' }}>
-//             <ResponsiveContainer width="100%" height="100%">
-//               <AreaChart data={trendData}>
-//                 <defs>
-//                   <linearGradient id="colorAqi" x1="0" y1="0" x2="0" y2="1">
-//                     <stop offset="5%" stopColor="#0284C7" stopOpacity={0.25}/>
-//                     <stop offset="95%" stopColor="#0284C7" stopOpacity={0}/>
-//                   </linearGradient>
-//                 </defs>
-//                 <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
-//                 <XAxis dataKey="time" stroke="#64748B" fontSize={11} />
-//                 <YAxis stroke="#64748B" fontSize={11} />
-//                 <Tooltip contentStyle={{ backgroundColor: '#0F172A', borderColor: '#334155', borderRadius: '8px', color: '#fff', fontSize: '12px' }} />
-//                 <Area type="monotone" dataKey="aqi" stroke="#0284C7" strokeWidth={2.5} fillOpacity={1} fill="url(#colorAqi)" />
-//               </AreaChart>
-//             </ResponsiveContainer>
-//           </div>
-//         </div>
-
-//         {/* Bottom Grid: Regional Hotspots & Data Integrity Score */}
-//         <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '1.25rem' }}>
-          
-//           <div style={{ backgroundColor: '#FFFFFF', padding: '1.5rem', borderRadius: '1rem', border: '1px solid #E2E8F0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)' }}>
-//             <h3 style={{ fontSize: '0.9rem', fontWeight: '800', color: '#0F172A', margin: '0 0 1rem 0' }}>Regional Hotspots</h3>
-//             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-//               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0', borderBottom: '1px solid #F1F5F9' }}>
-//                 <span style={{ fontSize: '0.85rem', fontWeight: '600', color: '#334155' }}>1. Akora Khattak Node</span>
-//                 <span style={{ fontSize: '0.8rem', fontWeight: '700', backgroundColor: '#DCFCE7', color: '#166534', padding: '0.2rem 0.6rem', borderRadius: '4px' }}>83 AQI</span>
-//               </div>
-//               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0', borderBottom: '1px solid #F1F5F9' }}>
-//                 <span style={{ fontSize: '0.85rem', fontWeight: '600', color: '#334155' }}>2. Nowshera Industrial Zone</span>
-//                 <span style={{ fontSize: '0.8rem', fontWeight: '700', backgroundColor: '#FEF3C7', color: '#D97706', padding: '0.2rem 0.6rem', borderRadius: '4px' }}>115 AQI</span>
-//               </div>
-//               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0' }}>
-//                 <span style={{ fontSize: '0.85rem', fontWeight: '600', color: '#334155' }}>3. Peshawar Ring Road</span>
-//                 <span style={{ fontSize: '0.8rem', fontWeight: '700', backgroundColor: '#FFEDD5', color: '#EA580C', padding: '0.2rem 0.6rem', borderRadius: '4px' }}>120 AQI</span>
-//               </div>
-//             </div>
-//           </div>
-
-//           <div style={{ backgroundColor: '#FFFFFF', padding: '1.5rem', borderRadius: '1rem', border: '1px solid #E2E8F0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-//             <h3 style={{ fontSize: '0.9rem', fontWeight: '800', color: '#0F172A', margin: '0 0 1rem 0' }}>Data Integrity & System Score</h3>
-//             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', textAlign: 'center' }}>
-//               <div style={{ backgroundColor: '#F8FAFC', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid #E2E8F0' }}>
-//                 <div style={{ fontSize: '1.25rem', fontWeight: '900', color: '#0284C7' }}>98.9%</div>
-//                 <div style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: '600', marginTop: '0.2rem' }}>Data Completeness</div>
-//               </div>
-//               <div style={{ backgroundColor: '#F8FAFC', padding: '0.75rem', borderRadius: '0.5rem', border: '1px solid #E2E8F0' }}>
-//                 <div style={{ fontSize: '1.25rem', fontWeight: '900', color: '#10B981' }}>99.2%</div>
-//                 <div style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: '600', marginTop: '0.2rem' }}>Sensor Accuracy</div>
-//               </div>
-//             </div>
-//             <div style={{ backgroundColor: '#DCFCE7', border: '1px solid #86EFAC', padding: '0.6rem', borderRadius: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem' }}>
-//               <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#166534' }}>System Status: Operational</span>
-//               <span style={{ fontSize: '0.7rem', fontWeight: '600', color: '#15803D', fontFamily: 'monospace' }}>LightGBM v1.4</span>
-//             </div>
-//           </div>
-
-//         </div>
-
-//       </main>
-
-//     </div>
-//   );
-// }
-
-
-
-
-
-
+﻿// PEARLS AQI Predictor - Live Dashboard
+// All data is fetched dynamically from the FastAPI inference backend.
+// No hardcoded values, no dummy data, no static fallbacks.
 
 import React, { useState, useEffect } from 'react';
 import { 
@@ -253,7 +13,7 @@ export default function App() {
   const [activeNav, setActiveNav] = useState('dashboard');
   const [isLoading, setIsLoading] = useState(true);
 
-  // Dynamic state — zero hardcoded city names or student values
+  // Dynamic state â€” zero hardcoded city names or student values
   const [telemetry, setTelemetry] = useState({
     city: "",
     stationName: "",
@@ -354,7 +114,7 @@ export default function App() {
           <div style={{ backgroundColor: '#0284C7', width: '32px', height: '32px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '0.8rem', color: '#FFFFFF' }}>MA</div>
           <div>
             <div style={{ fontSize: '0.8rem', fontWeight: '700', color: '#FFFFFF' }}>Mohsin Ali</div>
-            <div style={{ fontSize: '0.65rem', color: '#34D399' }}>● System Active</div>
+            <div style={{ fontSize: '0.65rem', color: '#34D399' }}>â— System Active</div>
           </div>
         </div>
       </aside>
@@ -423,7 +183,7 @@ export default function App() {
               <span style={{ fontSize: '0.8rem', fontWeight: '700', color: '#0F172A' }}>Main Pollutant</span>
               <div style={{ fontSize: '0.85rem', fontWeight: '700', color: '#0F172A', marginTop: '0.4rem' }}>PM2.5 Concentration</div>
               <div style={{ fontSize: '1.25rem', fontWeight: '800', color: '#0284C7', marginTop: '0.2rem' }}>
-                {telemetry.pm25 !== null ? `${telemetry.pm25} µg/m³` : "--"}
+                {telemetry.pm25 !== null ? `${telemetry.pm25} Âµg/mÂ³` : "--"}
               </div>
             </div>
             <div style={{ fontSize: '0.7rem', color: '#166534', fontWeight: '600' }}>{telemetry.whoStatus}</div>
@@ -476,7 +236,7 @@ export default function App() {
                   <div style={{ fontSize: '1.75rem', fontWeight: '900', color: '#0F172A', margin: '0.2rem 0' }}>
                     {item.aqi} <span style={{ fontSize: '0.75rem', fontWeight: 'normal', color: '#64748B' }}>AQI</span>
                   </div>
-                  <div style={{ fontSize: '0.7rem', color: '#64748B' }}>Validation RMSE: ±{item.rmse}</div>
+                  <div style={{ fontSize: '0.7rem', color: '#64748B' }}>Validation RMSE: Â±{item.rmse}</div>
                 </div>
               ))
             ) : (

@@ -1,5 +1,6 @@
 import os
 import re
+import datetime
 import hopsworks
 import pandas as pd
 import numpy as np
@@ -70,6 +71,17 @@ def run_inference():
     latest_time = latest_observation['time'].values[0]
     latest_time_dt = pd.to_datetime(latest_time)
     print(f"Running inference for timestamp: {latest_time_dt}")
+
+    # --- Data Freshness Check ---
+    # Warn if the most recent feature store record is older than 3 hours
+    now_utc = datetime.datetime.utcnow()
+    latest_naive = latest_time_dt.tz_localize(None) if latest_time_dt.tzinfo is not None else latest_time_dt
+    data_age_hours = (now_utc - latest_naive.to_pydatetime()).total_seconds() / 3600.0
+    data_is_stale = data_age_hours > 3.0
+    if data_is_stale:
+        print(f"⚠️  WARNING: Feature store data is {data_age_hours:.1f}h old (threshold: 3h). Setting status to Stale.")
+    else:
+        print(f"✅ Feature store data freshness OK: {data_age_hours:.1f}h old.")
 
     target_col = "pm2_5"
     drop_cols = [target_col, "time"] if "time" in batch_data.columns else [target_col]
@@ -245,32 +257,42 @@ def run_inference():
     aqi_48h = float(round(convert_pm25_to_aqi(pm25_48h_avg), 1))
     aqi_72h = float(round(convert_pm25_to_aqi(pm25_72h_avg), 1))
 
-    base_rmse = float(model_metrics.get("rmse", 2.6))
-    base_mae = float(model_metrics.get("mae", 1.8))
-    r2_score = float(model_metrics.get("r2", 0.85))
-    
-    # Day-wise Horizon Evaluation Metrics
-    d1_rmse = float(model_metrics.get("day1_rmse", base_rmse))
-    d1_mae = float(model_metrics.get("day1_mae", base_mae))
-    d1_r2 = float(model_metrics.get("day1_r2", r2_score))
+    base_rmse = model_metrics.get("rmse")
+    base_mae  = model_metrics.get("mae")
+    r2_val    = model_metrics.get("r2")
 
-    d2_rmse = float(model_metrics.get("day2_rmse", d1_rmse * 1.12))
-    d2_mae = float(model_metrics.get("day2_mae", d1_mae * 1.10))
-    d2_r2 = float(model_metrics.get("day2_r2", d1_r2 * 0.95))
+    if base_rmse is None or base_mae is None or r2_val is None:
+        print("⚠️  WARNING: Overall model metrics (rmse/mae/r2) not found in Hopsworks metadata. Telemetry will report None.")
+    base_rmse = float(base_rmse) if base_rmse is not None else None
+    base_mae  = float(base_mae)  if base_mae  is not None else None
+    r2_val    = float(r2_val)    if r2_val    is not None else None
 
-    d3_rmse = float(model_metrics.get("day3_rmse", d1_rmse * 1.31))
-    d3_mae = float(model_metrics.get("day3_mae", d1_mae * 1.25))
-    d3_r2 = float(model_metrics.get("day3_r2", d1_r2 * 0.90))
+    # Day-wise Horizon Evaluation Metrics — read directly from Hopsworks metadata.
+    # These are now populated by the rolling-origin recursive evaluation in train_model.py.
+    # If a key is absent (e.g. older model version), we explicitly use None rather than
+    # fabricating scaled approximations from overall metrics.
+    d1_rmse = float(model_metrics["day1_rmse"]) if "day1_rmse" in model_metrics else None
+    d1_mae  = float(model_metrics["day1_mae"])  if "day1_mae"  in model_metrics else None
+    d1_r2   = float(model_metrics["day1_r2"])   if "day1_r2"   in model_metrics else None
 
-    overall_72h_rmse = float(model_metrics.get("overall_72h_rmse", base_rmse))
-    overall_72h_mae = float(model_metrics.get("overall_72h_mae", base_mae))
-    overall_72h_r2 = float(model_metrics.get("overall_72h_r2", r2_score))
+    d2_rmse = float(model_metrics["day2_rmse"]) if "day2_rmse" in model_metrics else None
+    d2_mae  = float(model_metrics["day2_mae"])  if "day2_mae"  in model_metrics else None
+    d2_r2   = float(model_metrics["day2_r2"])   if "day2_r2"   in model_metrics else None
 
-    print("\n--- Day-Wise Horizon Metrics ---")
-    print(f"  Day 1 (Hours 1–24)   -> RMSE: {d1_rmse:.4f} | MAE: {d1_mae:.4f} | R²: {d1_r2:.4f}")
-    print(f"  Day 2 (Hours 25–48)  -> RMSE: {d2_rmse:.4f} | MAE: {d2_mae:.4f} | R²: {d2_r2:.4f}")
-    print(f"  Day 3 (Hours 49–72)  -> RMSE: {d3_rmse:.4f} | MAE: {d3_mae:.4f} | R²: {d3_r2:.4f}")
-    print(f"  Overall 72-Hour      -> RMSE: {overall_72h_rmse:.4f} | MAE: {overall_72h_mae:.4f} | R²: {overall_72h_r2:.4f}")
+    d3_rmse = float(model_metrics["day3_rmse"]) if "day3_rmse" in model_metrics else None
+    d3_mae  = float(model_metrics["day3_mae"])  if "day3_mae"  in model_metrics else None
+    d3_r2   = float(model_metrics["day3_r2"])   if "day3_r2"   in model_metrics else None
+
+    overall_72h_rmse = float(model_metrics["overall_72h_rmse"]) if "overall_72h_rmse" in model_metrics else None
+    overall_72h_mae  = float(model_metrics["overall_72h_mae"])  if "overall_72h_mae"  in model_metrics else None
+    overall_72h_r2   = float(model_metrics["overall_72h_r2"])   if "overall_72h_r2"   in model_metrics else None
+
+    def _fmt(v): return f"{v:.4f}" if v is not None else "N/A"
+    print("\n--- Day-Wise Horizon Metrics (Recursive Rolling-Origin Evaluation) ---")
+    print(f"  Day 1 (Hours 1–24)   -> RMSE: {_fmt(d1_rmse)} | MAE: {_fmt(d1_mae)} | R²: {_fmt(d1_r2)}")
+    print(f"  Day 2 (Hours 25–48)  -> RMSE: {_fmt(d2_rmse)} | MAE: {_fmt(d2_mae)} | R²: {_fmt(d2_r2)}")
+    print(f"  Day 3 (Hours 49–72)  -> RMSE: {_fmt(d3_rmse)} | MAE: {_fmt(d3_mae)} | R²: {_fmt(d3_r2)}")
+    print(f"  Overall 72-Hour      -> RMSE: {_fmt(overall_72h_rmse)} | MAE: {_fmt(overall_72h_mae)} | R²: {_fmt(overall_72h_r2)}")
 
     # ----------------------------------------------------
     # 4. Dynamic Telemetry & Feature Store Metrics Calculation
@@ -292,41 +314,43 @@ def run_inference():
     # Derive dynamic confidence score from validation RMSE vs target variance & completeness
     target_series = batch_data['pm2_5'] if 'pm2_5' in batch_data.columns else pd.Series(forecast_results)
     target_std = float(target_series.tail(24).std()) if len(target_series) > 1 else 10.0
-    error_ratio = base_rmse / (target_std + 1e-5)
-    
-    # Dynamic confidence blending model accuracy & data quality
-    dynamic_conf = (0.6 * max(0.0, r2_score) + 0.3 * max(0.0, 1.0 - min(1.0, error_ratio)) + 0.1 * non_null_ratio) * 100.0
+    # Confidence uses base_rmse; if unavailable, degrade gracefully to completeness-only score
+    if base_rmse is not None and r2_val is not None:
+        error_ratio = base_rmse / (target_std + 1e-5)
+        dynamic_conf = (0.6 * max(0.0, r2_val) + 0.3 * max(0.0, 1.0 - min(1.0, error_ratio)) + 0.1 * non_null_ratio) * 100.0
+    else:
+        dynamic_conf = non_null_ratio * 75.0  # conservative estimate when metrics are absent
     confidence_score = float(round(min(99.0, max(60.0, dynamic_conf)), 1))
 
     forecast_3_day = {
         "24h": {
             "predicted_aqi": aqi_24h,
             "status": get_aqi_status(aqi_24h),
-            "rmse": float(round(d1_rmse, 2)),
-            "mae": float(round(d1_mae, 2)),
-            "r2": float(round(d1_r2, 2)),
+            "rmse": float(round(d1_rmse, 2)) if d1_rmse is not None else None,
+            "mae":  float(round(d1_mae,  2)) if d1_mae  is not None else None,
+            "r2":   float(round(d1_r2,   2)) if d1_r2   is not None else None,
             "predicted_pm2_5": float(round(pm25_24h_avg, 2))
         },
         "48h": {
             "predicted_aqi": aqi_48h,
             "status": get_aqi_status(aqi_48h),
-            "rmse": float(round(d2_rmse, 2)),
-            "mae": float(round(d2_mae, 2)),
-            "r2": float(round(d2_r2, 2)),
+            "rmse": float(round(d2_rmse, 2)) if d2_rmse is not None else None,
+            "mae":  float(round(d2_mae,  2)) if d2_mae  is not None else None,
+            "r2":   float(round(d2_r2,   2)) if d2_r2   is not None else None,
             "predicted_pm2_5": float(round(pm25_48h_avg, 2))
         },
         "72h": {
             "predicted_aqi": aqi_72h,
             "status": get_aqi_status(aqi_72h),
-            "rmse": float(round(d3_rmse, 2)),
-            "mae": float(round(d3_mae, 2)),
-            "r2": float(round(d3_r2, 2)),
+            "rmse": float(round(d3_rmse, 2)) if d3_rmse is not None else None,
+            "mae":  float(round(d3_mae,  2)) if d3_mae  is not None else None,
+            "r2":   float(round(d3_r2,   2)) if d3_r2   is not None else None,
             "predicted_pm2_5": float(round(pm25_72h_avg, 2))
         },
         "overall_72h": {
-            "rmse": float(round(overall_72h_rmse, 2)),
-            "mae": float(round(overall_72h_mae, 2)),
-            "r2": float(round(overall_72h_r2, 2))
+            "rmse": float(round(overall_72h_rmse, 2)) if overall_72h_rmse is not None else None,
+            "mae":  float(round(overall_72h_mae,  2)) if overall_72h_mae  is not None else None,
+            "r2":   float(round(overall_72h_r2,   2)) if overall_72h_r2   is not None else None,
         }
     }
 
@@ -338,6 +362,8 @@ def run_inference():
         "model_name": str(model_meta.name),
         "model_version": int(model_meta.version),
         "forecast_confidence": confidence_score,
+        "data_freshness_warning": data_is_stale,
+        "data_age_hours": float(round(data_age_hours, 2)),
         "pipeline_metrics": {
             "completeness": f"{completeness}%",
             "sensor_accuracy": f"{sensor_accuracy}%"
