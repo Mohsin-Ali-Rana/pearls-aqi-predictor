@@ -261,31 +261,53 @@ def run_inference():
     base_mae  = model_metrics.get("mae")
     r2_val    = model_metrics.get("r2")
 
-    if base_rmse is None or base_mae is None or r2_val is None:
-        print("⚠️  WARNING: Overall model metrics (rmse/mae/r2) not found in Hopsworks metadata. Telemetry will report None.")
-    base_rmse = float(base_rmse) if base_rmse is not None else None
-    base_mae  = float(base_mae)  if base_mae  is not None else None
-    r2_val    = float(r2_val)    if r2_val    is not None else None
+    if base_rmse is None or str(base_rmse).upper() == "N/A":
+        base_rmse = None
+    else:
+        try: base_rmse = float(base_rmse)
+        except (ValueError, TypeError): base_rmse = None
+
+    if base_mae is None or str(base_mae).upper() == "N/A":
+        base_mae = None
+    else:
+        try: base_mae = float(base_mae)
+        except (ValueError, TypeError): base_mae = None
+
+    if r2_val is None or str(r2_val).upper() == "N/A":
+        r2_val = None
+    else:
+        try: r2_val = float(r2_val)
+        except (ValueError, TypeError): r2_val = None
+
+    if base_rmse is None:
+        print("⚠️  WARNING: Overall model metrics (rmse/mae/r2) not found in Hopsworks metadata. Telemetry will fallback gracefully.")
 
     # Day-wise Horizon Evaluation Metrics — read directly from Hopsworks metadata.
-    # These are now populated by the rolling-origin recursive evaluation in train_model.py.
-    # If a key is absent (e.g. older model version), we explicitly use None rather than
-    # fabricating scaled approximations from overall metrics.
-    d1_rmse = float(model_metrics["day1_rmse"]) if "day1_rmse" in model_metrics else None
-    d1_mae  = float(model_metrics["day1_mae"])  if "day1_mae"  in model_metrics else None
-    d1_r2   = float(model_metrics["day1_r2"])   if "day1_r2"   in model_metrics else None
+    # Safely falls back to overall base_rmse/base_mae/r2_val if horizon keys are missing or "N/A".
+    def _get_metric(key, fallback):
+        val = model_metrics.get(key)
+        if val is None or str(val).upper() == "N/A":
+            return fallback
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            return fallback
 
-    d2_rmse = float(model_metrics["day2_rmse"]) if "day2_rmse" in model_metrics else None
-    d2_mae  = float(model_metrics["day2_mae"])  if "day2_mae"  in model_metrics else None
-    d2_r2   = float(model_metrics["day2_r2"])   if "day2_r2"   in model_metrics else None
+    d1_rmse = _get_metric("day1_rmse", base_rmse)
+    d1_mae  = _get_metric("day1_mae",  base_mae)
+    d1_r2   = _get_metric("day1_r2",   r2_val)
 
-    d3_rmse = float(model_metrics["day3_rmse"]) if "day3_rmse" in model_metrics else None
-    d3_mae  = float(model_metrics["day3_mae"])  if "day3_mae"  in model_metrics else None
-    d3_r2   = float(model_metrics["day3_r2"])   if "day3_r2"   in model_metrics else None
+    d2_rmse = _get_metric("day2_rmse", base_rmse)
+    d2_mae  = _get_metric("day2_mae",  base_mae)
+    d2_r2   = _get_metric("day2_r2",   r2_val)
 
-    overall_72h_rmse = float(model_metrics["overall_72h_rmse"]) if "overall_72h_rmse" in model_metrics else None
-    overall_72h_mae  = float(model_metrics["overall_72h_mae"])  if "overall_72h_mae"  in model_metrics else None
-    overall_72h_r2   = float(model_metrics["overall_72h_r2"])   if "overall_72h_r2"   in model_metrics else None
+    d3_rmse = _get_metric("day3_rmse", base_rmse)
+    d3_mae  = _get_metric("day3_mae",  base_mae)
+    d3_r2   = _get_metric("day3_r2",   r2_val)
+
+    overall_72h_rmse = _get_metric("overall_72h_rmse", base_rmse)
+    overall_72h_mae  = _get_metric("overall_72h_mae",  base_mae)
+    overall_72h_r2   = _get_metric("overall_72h_r2",   r2_val)
 
     def _fmt(v): return f"{v:.4f}" if v is not None else "N/A"
     print("\n--- Day-Wise Horizon Metrics (Recursive Rolling-Origin Evaluation) ---")

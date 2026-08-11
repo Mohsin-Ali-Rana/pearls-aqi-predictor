@@ -1,4 +1,4 @@
-﻿// PEARLS AQI Predictor - Live Dashboard
+// PEARLS AQI Predictor - Live Dashboard
 // All data is fetched dynamically from the FastAPI inference backend.
 // No hardcoded values, no dummy data, no static fallbacks.
 
@@ -183,7 +183,7 @@ export default function App() {
               <span style={{ fontSize: '0.8rem', fontWeight: '700', color: '#0F172A' }}>Main Pollutant</span>
               <div style={{ fontSize: '0.85rem', fontWeight: '700', color: '#0F172A', marginTop: '0.4rem' }}>PM2.5 Concentration</div>
               <div style={{ fontSize: '1.25rem', fontWeight: '800', color: '#0284C7', marginTop: '0.2rem' }}>
-                {telemetry.pm25 !== null ? `${telemetry.pm25} Âµg/mÂ³` : "--"}
+                {telemetry.pm25 !== null ? `${telemetry.pm25} µg/m³` : "--"}
               </div>
             </div>
             <div style={{ fontSize: '0.7rem', color: '#166534', fontWeight: '600' }}>{telemetry.whoStatus}</div>
@@ -236,7 +236,9 @@ export default function App() {
                   <div style={{ fontSize: '1.75rem', fontWeight: '900', color: '#0F172A', margin: '0.2rem 0' }}>
                     {item.aqi} <span style={{ fontSize: '0.75rem', fontWeight: 'normal', color: '#64748B' }}>AQI</span>
                   </div>
-                  <div style={{ fontSize: '0.7rem', color: '#64748B' }}>Validation RMSE: Â±{item.rmse}</div>
+                  <div style={{ fontSize: '0.7rem', color: '#64748B' }}>
+                    {item.rmse !== null && item.rmse !== undefined ? `Validation RMSE: ±${item.rmse}` : 'Validation RMSE: --'}
+                  </div>
                 </div>
               ))
             ) : (

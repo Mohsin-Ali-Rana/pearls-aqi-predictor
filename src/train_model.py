@@ -257,9 +257,9 @@ def train_evaluate_and_register_best_model():
     promote_model = False
     gate_reason = ""
     
-    if champion_metrics is None or "rmse" not in champion_metrics:
+    if champion_metrics is None or "rmse" not in champion_metrics or "day1_rmse" not in champion_metrics:
         promote_model = True
-        gate_reason = "Initial champion model registration."
+        gate_reason = "Champion model upgrade: registering model with rolling-origin day-wise horizon metrics."
     else:
         champion_rmse = float(champion_metrics["rmse"])
         champion_mae = float(champion_metrics.get("mae", champion_rmse))
