@@ -26,17 +26,17 @@ def create_feature_view_and_splits() -> Tuple[pd.DataFrame, pd.DataFrame, pd.Dat
     # ----------------------------------------------------
     # 2. Retrieve the Feature Group & Register Feature View
     # ----------------------------------------------------
-    print("Fetching 'aqi_hourly_features' feature group...")
-    aqi_fg = fs.get_feature_group(name="aqi_hourly_features", version=1)
+    print("Fetching 'aqi_hourly_features' feature group v2...")
+    aqi_fg = fs.get_feature_group(name="aqi_hourly_features", version=2)
     
     # Select all engineered features
     ds_query = aqi_fg.select_all()
     
-    print("Registering Feature View metadata: 'aqi_hourly_feature_view'...")
+    print("Registering Feature View metadata: 'aqi_hourly_feature_view' v2...")
     feature_view = fs.get_or_create_feature_view(
         name="aqi_hourly_feature_view",
-        version=1,
-        description="Hourly feature view for PM2.5 time-series regression forecasting",
+        version=2,
+        description="Hourly feature view v2 for PM2.5 time-series regression forecasting",
         labels=["pm2_5"],  # Designate PM2.5 as our target (y)
         query=ds_query
     )

@@ -58,7 +58,13 @@ def run_inference():
     # ----------------------------------------------------
     fs = project.get_feature_store()
     print("Loading feature data from Feature Store...")
-    fg = fs.get_feature_group("aqi_hourly_features", version=1)
+    try:
+        fgs = fs.get_feature_groups("aqi_hourly_features")
+        fg_version = max([int(fg.version) for fg in fgs]) if fgs else 2
+    except Exception:
+        fg_version = 2
+    print(f"Fetching Feature Group v{fg_version}...")
+    fg = fs.get_feature_group("aqi_hourly_features", version=fg_version)
     
     # Fetch online or offline batch data from Hopsworks
     batch_data = fg.read(online=True)
@@ -100,15 +106,67 @@ def run_inference():
     # ----------------------------------------------------
     # 3. Dynamic Multi-Horizon Recursive Forecasting (72 Hours)
     # ----------------------------------------------------
-    print("\n--- Generating Dynamic Multi-Horizon (72H) Forecasts ---")
+    print("\n--- Generating Dynamic Multi-Horizon (72H) Forecasts with Live Weather Forecast Ingestion ---")
     
+    # Fetch live 72-hour weather and air quality forecasts from Open-Meteo APIs
+    import requests
+    try:
+        from config import LOCATION_LATITUDE, LOCATION_LONGITUDE
+    except ImportError:
+        from src.config import LOCATION_LATITUDE, LOCATION_LONGITUDE
+
+    weather_fc_params = {
+        "latitude": LOCATION_LATITUDE,
+        "longitude": LOCATION_LONGITUDE,
+        "hourly": ["temperature_2m", "relative_humidity_2m", "wind_speed_10m", "surface_pressure"],
+        "forecast_days": 4,
+        "timezone": "auto"
+    }
+    aqi_fc_params = {
+        "latitude": LOCATION_LATITUDE,
+        "longitude": LOCATION_LONGITUDE,
+        "hourly": ["nitrogen_dioxide", "ozone", "pm10"],
+        "forecast_days": 4,
+        "timezone": "auto"
+    }
+
+    try:
+        res_w = requests.get("https://api.open-meteo.com/v1/forecast", params=weather_fc_params, timeout=10.0)
+        df_w_fc = pd.DataFrame(res_w.json().get("hourly", {}))
+        if not df_w_fc.empty and 'time' in df_w_fc.columns:
+            df_w_fc['time'] = pd.to_datetime(df_w_fc['time'], utc=True)
+    except Exception as e:
+        print(f"Note: Weather forecast fetch fallback: {e}")
+        df_w_fc = pd.DataFrame()
+
+    try:
+        res_aqi = requests.get("https://air-quality-api.open-meteo.com/v1/air-quality", params=aqi_fc_params, timeout=10.0)
+        df_aqi_fc = pd.DataFrame(res_aqi.json().get("hourly", {}))
+        if not df_aqi_fc.empty and 'time' in df_aqi_fc.columns:
+            df_aqi_fc['time'] = pd.to_datetime(df_aqi_fc['time'], utc=True)
+    except Exception as e:
+        print(f"Note: AQI forecast fetch fallback: {e}")
+        df_aqi_fc = pd.DataFrame()
+
+    if not df_w_fc.empty and not df_aqi_fc.empty:
+        df_exo_fc = pd.merge(df_w_fc, df_aqi_fc, on='time', how='outer').sort_values('time').reset_index(drop=True)
+    elif not df_w_fc.empty:
+        df_exo_fc = df_w_fc
+    elif not df_aqi_fc.empty:
+        df_exo_fc = df_aqi_fc
+    else:
+        df_exo_fc = pd.DataFrame()
+
+    if not df_exo_fc.empty and 'time' in df_exo_fc.columns:
+        df_exo_fc['time'] = pd.to_datetime(df_exo_fc['time'], utc=True)
+
     # Prepare historical series buffers for multi-step lag and rolling feature calculations
     pm25_hist = list(batch_data['pm2_5'].values) if 'pm2_5' in batch_data.columns else [18.73] * len(batch_data)
     
     if 'pm10' in batch_data.columns:
         pm10_hist = list(batch_data['pm10'].values)
     else:
-        pm10_hist = [val * 1.6 for val in pm25_hist]
+        pm10_hist = list(pm25_hist)
 
     if 'european_aqi' in batch_data.columns:
         eqi_hist = list(batch_data['european_aqi'].values)
@@ -119,10 +177,19 @@ def run_inference():
 
     # Perform recursive multi-step forecasting across 72 hours
     for step in range(1, 73):
-        step_time = latest_time_dt + pd.Timedelta(hours=step)
+        step_time_utc = pd.to_datetime(latest_time_utc) + pd.Timedelta(hours=step)
+        step_time = step_time_utc
         step_features = {}
 
-        # 1. Update temporal cyclical features
+        # 1. Look up live exogenous forecast parameters for step_time using strict UTC-aware timestamp alignment
+        exo_row = {}
+        if not df_exo_fc.empty and 'time' in df_exo_fc.columns:
+            time_diffs = (df_exo_fc['time'] - step_time_utc).abs()
+            min_idx = time_diffs.idxmin()
+            if time_diffs.loc[min_idx] <= pd.Timedelta(hours=1):
+                exo_row = df_exo_fc.loc[min_idx].to_dict()
+
+        # 2. Update temporal cyclical features
         if "hour" in feature_cols:
             step_features["hour"] = step_time.hour
         if "day_of_week" in feature_cols:
@@ -138,30 +205,14 @@ def run_inference():
         if "sin_day_of_week" in feature_cols:
             step_features["sin_day_of_week"] = float(np.sin(2 * np.pi * step_time.dayofweek / 7.0))
         if "cos_day_of_week" in feature_cols:
-            step_features["cos_day_of_week"] = float(np.cos(2 * np.pi * step_time.dayofweek / 7.0))
+            step_features["cos_day_of_week"] = float(np.sin(2 * np.pi * step_time.dayofweek / 7.0))
 
-        # 2. Update dynamic gaseous pollutant & diurnal factors
-        h = step_time.hour
-        rush_mod = 1.0 + 0.15 * np.cos(2 * np.pi * (h - 8) / 24)
-        solar_mod = max(0.1, np.sin(np.pi * (h - 6) / 12)) if 6 <= h <= 18 else 0.1
-
-        base_no2 = float(X_latest['nitrogen_dioxide'].values[0]) if 'nitrogen_dioxide' in X_latest.columns else 25.0
-        base_o3 = float(X_latest['ozone'].values[0]) if 'ozone' in X_latest.columns else 35.0
-        
-        step_no2 = max(2.0, base_no2 * rush_mod)
-        step_o3 = max(2.0, base_o3 * (0.4 + 0.8 * solar_mod))
-
-        if "nitrogen_dioxide" in feature_cols:
-            step_features["nitrogen_dioxide"] = step_no2
-        if "ozone" in feature_cols:
-            step_features["ozone"] = step_o3
-
-        # 3. Update specific and dynamic lag features
+        # 3. Update dynamic lag, rolling, and exogenous features
         for col in feature_cols:
             if col in step_features:
                 continue
             
-            # Match specific lag column names
+            # Specific lag column names
             if col == "pm2_5_lag_1h":
                 step_features[col] = pm25_hist[-1]
             elif col == "pm2_5_lag_3h":
@@ -180,47 +231,27 @@ def run_inference():
                 step_features[col] = eqi_hist[-3] if len(eqi_hist) >= 3 else eqi_hist[-1]
             elif col == "european_aqi_lag_24h":
                 step_features[col] = eqi_hist[-24] if len(eqi_hist) >= 24 else eqi_hist[-1]
-            # 4. Update rolling window statistics
+            # Rolling window statistics
             elif col == "pm2_5_rolling_6h_mean":
-                step_features[col] = float(np.mean(pm25_hist[-6:])) if len(pm25_hist) > 0 else 18.73
+                step_features[col] = float(np.mean(pm25_hist[-6:]))
             elif col == "pm2_5_rolling_24h_mean":
-                step_features[col] = float(np.mean(pm25_hist[-24:])) if len(pm25_hist) > 0 else 18.73
+                step_features[col] = float(np.mean(pm25_hist[-24:]))
             elif col == "pm10_rolling_6h_mean":
-                step_features[col] = float(np.mean(pm10_hist[-6:])) if len(pm10_hist) > 0 else 30.0
+                step_features[col] = float(np.mean(pm10_hist[-6:]))
             elif col == "pm10_rolling_24h_mean":
-                step_features[col] = float(np.mean(pm10_hist[-24:])) if len(pm10_hist) > 0 else 30.0
-            # 5. Update derived pollution velocity
+                step_features[col] = float(np.mean(pm10_hist[-24:]))
+            # Derived pollution velocity
             elif col == "aqi_change_rate":
                 eqi_1h = eqi_hist[-1]
                 eqi_3h = eqi_hist[-3] if len(eqi_hist) >= 3 else eqi_hist[-1]
                 step_features[col] = float(eqi_1h - eqi_3h)
-            # Pattern matching for any other generic lag/rolling features
-            elif "_lag_" in col:
-                match = re.search(r"(\d+)h", col)
-                lag_k = int(match.group(1)) if match else 1
-                if col.startswith("pm2_5"):
-                    step_features[col] = pm25_hist[-lag_k] if len(pm25_hist) >= lag_k else pm25_hist[-1]
-                elif col.startswith("pm10"):
-                    step_features[col] = pm10_hist[-lag_k] if len(pm10_hist) >= lag_k else pm10_hist[-1]
-                elif col.startswith("european_aqi"):
-                    step_features[col] = eqi_hist[-lag_k] if len(eqi_hist) >= lag_k else eqi_hist[-1]
-                else:
-                    step_features[col] = float(X_latest[col].values[0]) if col in X_latest.columns else 0.0
-            elif "_rolling_" in col:
-                match = re.search(r"(\d+)h", col)
-                win = int(match.group(1)) if match else 6
-                if "pm2_5" in col:
-                    step_features[col] = float(np.mean(pm25_hist[-win:])) if len(pm25_hist) > 0 else 18.73
-                elif "pm10" in col:
-                    step_features[col] = float(np.mean(pm10_hist[-win:])) if len(pm10_hist) > 0 else 30.0
-                else:
-                    step_features[col] = float(X_latest[col].values[0]) if col in X_latest.columns else 0.0
-            elif col == "pm10":
-                step_features[col] = pm10_hist[-1]
-            elif col == "european_aqi":
-                step_features[col] = eqi_hist[-1]
+            # Weather & Exogenous forecast injection for step t
+            elif col in exo_row and exo_row[col] is not None and not pd.isna(exo_row[col]):
+                step_features[col] = float(exo_row[col])
+            elif col in X_latest.columns:
+                step_features[col] = float(X_latest[col].values[0])
             else:
-                step_features[col] = float(X_latest[col].values[0]) if col in X_latest.columns else 0.0
+                step_features[col] = 0.0
 
         # Construct single-row input DataFrame and enforce strict feature column ordering matching model expectation
         step_input_df = pd.DataFrame([step_features])
@@ -245,9 +276,10 @@ def run_inference():
 
         # Update historical buffers for subsequent recursive steps
         pm25_hist.append(pred_pm25)
-        prev_pm25 = pm25_hist[-2] if len(pm25_hist) >= 2 else pm25_hist[-1]
-        pm10_ratio = (pm10_hist[-1] / (prev_pm25 + 1e-5)) if prev_pm25 > 0 else 1.6
-        pm10_hist.append(pred_pm25 * max(1.0, min(3.0, pm10_ratio)))
+        if "pm10" in exo_row and exo_row["pm10"] is not None and not pd.isna(exo_row["pm10"]):
+            pm10_hist.append(float(exo_row["pm10"]))
+        else:
+            pm10_hist.append(pred_pm25)
         eqi_hist.append(convert_pm25_to_aqi(pred_pm25))
 
     # Extract short-term 3-hour tactical predictions
@@ -350,7 +382,7 @@ def run_inference():
         dynamic_conf = (0.6 * max(0.0, r2_val) + 0.3 * max(0.0, 1.0 - min(1.0, error_ratio)) + 0.1 * non_null_ratio) * 100.0
     else:
         dynamic_conf = non_null_ratio * 75.0  # conservative estimate when metrics are absent
-    confidence_score = float(round(min(99.0, max(60.0, dynamic_conf)), 1))
+    confidence_score = float(round(min(99.0, max(0.0, dynamic_conf)), 1))
 
     forecast_3_day = {
         "24h": {

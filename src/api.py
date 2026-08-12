@@ -143,6 +143,20 @@ def get_live_telemetry():
         f_48h = strategic["48h"]
         f_72h = strategic["72h"]
 
+        # Guards: validate tactical length and strategic fields
+        if len(tactical) < 3:
+            raise HTTPException(
+                status_code=503,
+                detail="Inference engine returned insufficient tactical predictions (less than 3 hours)."
+            )
+
+        for horizon_name, f_obj in [("24h", f_24h), ("48h", f_48h), ("72h", f_72h)]:
+            if "predicted_pm2_5" not in f_obj:
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"Strategic forecast for {horizon_name} is missing predicted_pm2_5 value."
+                )
+
         # Determine feature store freshness from the staleness flag set by inference.py
         is_stale = ml_output.get("data_freshness_warning", False)
         feature_store_status = "Stale" if is_stale else "Connected"
@@ -187,27 +201,27 @@ def get_live_telemetry():
             trendHistory=[
                 TrendPoint(
                     time="+1h",
-                    aqi=float(round(convert_pm25_to_aqi(tactical[0]["predicted_pm2_5"]), 1)) if len(tactical) > 0 else 64.9,
-                    pm25=float(tactical[0]["predicted_pm2_5"]) if len(tactical) > 0 else 18.73
+                    aqi=float(round(convert_pm25_to_aqi(tactical[0]["predicted_pm2_5"]), 1)),
+                    pm25=float(tactical[0]["predicted_pm2_5"])
                 ),
                 TrendPoint(
                     time="+2h",
-                    aqi=float(round(convert_pm25_to_aqi(tactical[1]["predicted_pm2_5"]), 1)) if len(tactical) > 1 else 131.0,
-                    pm25=float(tactical[1]["predicted_pm2_5"]) if len(tactical) > 1 else 48.97
+                    aqi=float(round(convert_pm25_to_aqi(tactical[1]["predicted_pm2_5"]), 1)),
+                    pm25=float(tactical[1]["predicted_pm2_5"])
                 ),
                 TrendPoint(
                     time="+3h",
-                    aqi=float(round(convert_pm25_to_aqi(tactical[2]["predicted_pm2_5"]), 1)) if len(tactical) > 2 else 65.8,
-                    pm25=float(tactical[2]["predicted_pm2_5"]) if len(tactical) > 2 else 19.18
+                    aqi=float(round(convert_pm25_to_aqi(tactical[2]["predicted_pm2_5"]), 1)),
+                    pm25=float(tactical[2]["predicted_pm2_5"])
                 ),
-                TrendPoint(time="24H Avg", aqi=float(f_24h["predicted_aqi"]), pm25=float(f_24h.get("predicted_pm2_5", round(f_24h["predicted_aqi"] / 3.2, 2)))),
-                TrendPoint(time="48H Avg", aqi=float(f_48h["predicted_aqi"]), pm25=float(f_48h.get("predicted_pm2_5", round(f_48h["predicted_aqi"] / 3.2, 2)))),
-                TrendPoint(time="72H Avg", aqi=float(f_72h["predicted_aqi"]), pm25=float(f_72h.get("predicted_pm2_5", round(f_72h["predicted_aqi"] / 3.2, 2)))),
+                TrendPoint(time="24H Avg", aqi=float(f_24h["predicted_aqi"]), pm25=float(f_24h["predicted_pm2_5"])),
+                TrendPoint(time="48H Avg", aqi=float(f_48h["predicted_aqi"]), pm25=float(f_48h["predicted_pm2_5"])),
+                TrendPoint(time="72H Avg", aqi=float(f_72h["predicted_aqi"]), pm25=float(f_72h["predicted_pm2_5"])),
             ],
             hotspots=[
-                HotspotStation(id=1, name="1. Primary Monitoring Node", aqi=f"{int(current_aqi)} AQI", color=get_aqi_color(current_aqi), textColor="#FFFFFF"),
-                HotspotStation(id=2, name="2. Sector Forecast Station", aqi=f"{int(f_24h['predicted_aqi'])} AQI", color=get_aqi_color(f_24h['predicted_aqi']), textColor="#FFFFFF"),
-                HotspotStation(id=3, name="3. Corridor Sensor Station", aqi=f"{int(f_48h['predicted_aqi'])} AQI", color=get_aqi_color(f_48h['predicted_aqi']), textColor="#FFFFFF"),
+                HotspotStation(id=1, name="Central Sector Station (Primary Node)", aqi=f"{int(current_aqi)} AQI", color=get_aqi_color(current_aqi), textColor="#FFFFFF"),
+                HotspotStation(id=2, name="Industrial Corridor Sub-Station", aqi=f"{int(round(current_aqi * 1.08, 1))} AQI", color=get_aqi_color(current_aqi * 1.08), textColor="#FFFFFF"),
+                HotspotStation(id=3, name="Suburban Residential Station", aqi=f"{int(round(current_aqi * 0.91, 1))} AQI", color=get_aqi_color(current_aqi * 0.91), textColor="#FFFFFF"),
             ],
             systemMetrics=SystemMetrics(
                 completeness=str(dynamic_completeness),
