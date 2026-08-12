@@ -68,9 +68,9 @@ def generate_features(df: pd.DataFrame) -> pd.DataFrame:
 def run_feature_pipeline():
     print("Fetching raw dataset dynamically up to today...")
     
-    # Calculate dynamic dates for ongoing ingestion
-    today_str = datetime.now().strftime("%Y-%m-%d")
-    start_str = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+    # Fetch 2 years of historical data up to yesterday for feature group v2
+    today_str = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+    start_str = (datetime.now() - timedelta(days=730)).strftime("%Y-%m-%d")
     
     raw_df = fetch_historical_aqi(LOCATION_LATITUDE, LOCATION_LONGITUDE, start_str, today_str)
     
@@ -89,14 +89,14 @@ def run_feature_pipeline():
     )
     fs = project.get_feature_store()
     
-    print("Uploading Feature Group to Cloud Feature Store...")
+    print("Uploading Feature Group v2 to Cloud Feature Store...")
     aqi_fg = fs.get_or_create_feature_group(
         name="aqi_hourly_features",
-        version=1,
+        version=2,
         primary_key=["time"],
         event_time="time",
         online_enabled=True,
-        description="Hourly engineered air quality and pollutant features"
+        description="Hourly engineered air quality, meteorological and cyclical time features"
     )
     
     # Sync schema for any new engineered features (e.g. continuous sin/cos time features)
