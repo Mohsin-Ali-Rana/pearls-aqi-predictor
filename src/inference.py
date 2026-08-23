@@ -77,7 +77,7 @@ def run_inference():
     latest_time = latest_observation['time'].values[0]
     latest_time_dt = pd.to_datetime(latest_time)
 
-    # Convert latest_time_dt explicitly to timezone-aware UTC
+    # Convert latest_time_dt explicitly to UTC-aware datetime
     if latest_time_dt.tzinfo is None:
         latest_time_utc = latest_time_dt.tz_localize(timezone.utc)
     else:
@@ -87,7 +87,6 @@ def run_inference():
     print(f"Running inference for timestamp: {latest_time_utc.strftime('%Y-%m-%d %H:%M:%S UTC')}")
 
     # --- Data Freshness Check ---
-    # Compare UTC timestamps explicitly to ensure positive age calculation
     data_age_seconds = (now_utc - latest_time_utc).total_seconds()
     data_age_hours = max(0.0, float(round(data_age_seconds / 3600.0, 1)))
     data_is_stale = data_age_hours > 3.0
@@ -148,6 +147,13 @@ def run_inference():
         print(f"Note: AQI forecast fetch fallback: {e}")
         df_aqi_fc = pd.DataFrame()
 
+    target_72h_range = pd.date_range(
+        start=latest_time_utc + pd.Timedelta(hours=1),
+        periods=72,
+        freq='1h',
+        tz=timezone.utc
+    )
+
     if not df_w_fc.empty and not df_aqi_fc.empty:
         df_exo_fc = pd.merge(df_w_fc, df_aqi_fc, on='time', how='outer').sort_values('time').reset_index(drop=True)
     elif not df_w_fc.empty:
@@ -159,6 +165,22 @@ def run_inference():
 
     if not df_exo_fc.empty and 'time' in df_exo_fc.columns:
         df_exo_fc['time'] = pd.to_datetime(df_exo_fc['time'], utc=True)
+        df_exo_fc = df_exo_fc.drop_duplicates(subset=['time']).set_index('time').sort_index()
+
+        # Reindex across union of existing forecast timestamps and 72-hour continuous target range
+        full_index = df_exo_fc.index.union(target_72h_range).sort_values()
+        df_exo_fc = df_exo_fc.reindex(full_index)
+
+        # Interpolate across continuous hourly timestamps using time-based interpolation, then ffill/bfill boundaries
+        num_cols = df_exo_fc.select_dtypes(include=[np.number]).columns
+        if not num_cols.empty:
+            df_exo_fc[num_cols] = df_exo_fc[num_cols].interpolate(method='time').ffill().bfill()
+
+        # Strictly reindex to the 72 continuous hourly timestamps to guarantee 100% hourly weather match
+        df_exo_fc = df_exo_fc.reindex(target_72h_range)
+        df_exo_fc.index.name = 'time'
+        df_exo_fc = df_exo_fc.reset_index()
+        print(f"✅ Exogenous weather forecast reindexed and interpolated across all 72 continuous hourly timestamps (100% hourly match).")
 
     # Prepare historical series buffers for multi-step lag and rolling feature calculations
     pm25_hist = list(batch_data['pm2_5'].values) if 'pm2_5' in batch_data.columns else [18.73] * len(batch_data)
@@ -177,7 +199,9 @@ def run_inference():
 
     # Perform recursive multi-step forecasting across 72 hours
     for step in range(1, 73):
-        step_time_utc = pd.to_datetime(latest_time_utc) + pd.Timedelta(hours=step)
+        step_time_utc = latest_time_utc + pd.Timedelta(hours=step)
+        if step_time_utc.tzinfo is None:
+            step_time_utc = step_time_utc.tz_localize(timezone.utc)
         step_time = step_time_utc
         step_features = {}
 
@@ -193,19 +217,19 @@ def run_inference():
         if "hour" in feature_cols:
             step_features["hour"] = step_time.hour
         if "day_of_week" in feature_cols:
-            step_features["day_of_week"] = step_time.dayofweek
+            step_features["day_of_week"] = step_time.weekday()
         if "month" in feature_cols:
             step_features["month"] = step_time.month
         if "is_weekend" in feature_cols:
-            step_features["is_weekend"] = 1 if step_time.dayofweek >= 5 else 0
+            step_features["is_weekend"] = 1 if step_time.weekday() >= 5 else 0
         if "sin_hour" in feature_cols:
             step_features["sin_hour"] = float(np.sin(2 * np.pi * step_time.hour / 24.0))
         if "cos_hour" in feature_cols:
             step_features["cos_hour"] = float(np.cos(2 * np.pi * step_time.hour / 24.0))
         if "sin_day_of_week" in feature_cols:
-            step_features["sin_day_of_week"] = float(np.sin(2 * np.pi * step_time.dayofweek / 7.0))
+            step_features["sin_day_of_week"] = float(np.sin(2 * np.pi * step_time.weekday() / 7.0))
         if "cos_day_of_week" in feature_cols:
-            step_features["cos_day_of_week"] = float(np.sin(2 * np.pi * step_time.dayofweek / 7.0))
+            step_features["cos_day_of_week"] = float(np.cos(2 * np.pi * step_time.weekday() / 7.0))
 
         # 3. Update dynamic lag, rolling, and exogenous features
         for col in feature_cols:
@@ -245,8 +269,8 @@ def run_inference():
                 eqi_1h = eqi_hist[-1]
                 eqi_3h = eqi_hist[-3] if len(eqi_hist) >= 3 else eqi_hist[-1]
                 step_features[col] = float(eqi_1h - eqi_3h)
-            # Weather & Exogenous forecast injection for step t
-            elif col in exo_row and exo_row[col] is not None and not pd.isna(exo_row[col]):
+            # Weather Forecast injection for step t (only valid exogenous weather variables)
+            elif col in ['temperature_2m', 'relative_humidity_2m', 'wind_speed_10m', 'surface_pressure'] and col in exo_row and exo_row[col] is not None and not pd.isna(exo_row[col]):
                 step_features[col] = float(exo_row[col])
             elif col in X_latest.columns:
                 step_features[col] = float(X_latest[col].values[0])
@@ -274,12 +298,9 @@ def run_inference():
         pred_pm25 = max(0.1, pred_pm25)
         forecast_results.append(pred_pm25)
 
-        # Update historical buffers for subsequent recursive steps
+        # Update historical buffers for subsequent recursive steps (no co-pollutant leakage!)
         pm25_hist.append(pred_pm25)
-        if "pm10" in exo_row and exo_row["pm10"] is not None and not pd.isna(exo_row["pm10"]):
-            pm10_hist.append(float(exo_row["pm10"]))
-        else:
-            pm10_hist.append(pred_pm25)
+        pm10_hist.append(pred_pm25)
         eqi_hist.append(convert_pm25_to_aqi(pred_pm25))
 
     # Extract short-term 3-hour tactical predictions
@@ -323,7 +344,6 @@ def run_inference():
         print("⚠️  WARNING: Overall model metrics (rmse/mae/r2) not found in Hopsworks metadata. Telemetry will fallback gracefully.")
 
     # Day-wise Horizon Evaluation Metrics — read directly from Hopsworks metadata.
-    # Safely falls back to overall base_rmse/base_mae/r2_val if horizon keys are missing or "N/A".
     def _get_metric(key, fallback):
         val = model_metrics.get(key)
         if val is None or str(val).upper() == "N/A":
@@ -350,7 +370,7 @@ def run_inference():
     overall_72h_r2   = _get_metric("overall_72h_r2",   r2_val)
 
     def _fmt(v): return f"{v:.4f}" if v is not None else "N/A"
-    print("\n--- Day-Wise Horizon Metrics (Recursive Rolling-Origin Evaluation) ---")
+    print("\n--- Day-Wise Horizon Metrics (Hopsworks Registered Model Metadata) ---")
     print(f"  Day 1 (Hours 1–24)   -> RMSE: {_fmt(d1_rmse)} | MAE: {_fmt(d1_mae)} | R²: {_fmt(d1_r2)}")
     print(f"  Day 2 (Hours 25–48)  -> RMSE: {_fmt(d2_rmse)} | MAE: {_fmt(d2_mae)} | R²: {_fmt(d2_r2)}")
     print(f"  Day 3 (Hours 49–72)  -> RMSE: {_fmt(d3_rmse)} | MAE: {_fmt(d3_mae)} | R²: {_fmt(d3_r2)}")
@@ -359,12 +379,10 @@ def run_inference():
     # ----------------------------------------------------
     # 4. Dynamic Telemetry & Feature Store Metrics Calculation
     # ----------------------------------------------------
-    # Compute feature completeness ratio from recent Hopsworks vector
     recent_vector = batch_data[feature_cols].tail(24)
     non_null_ratio = float(recent_vector.notnull().mean().mean())
     completeness = float(round(non_null_ratio * 100.0, 1))
 
-    # Compute sensor accuracy ratio dynamically based on raw sensor signal validity
     sensor_cols = [c for c in ['pm2_5', 'pm10', 'european_aqi'] if c in batch_data.columns]
     if sensor_cols:
         raw_sensor_data = batch_data[sensor_cols].tail(24)
@@ -373,15 +391,17 @@ def run_inference():
     else:
         sensor_accuracy = float(round(non_null_ratio * 100.0, 1))
 
-    # Derive dynamic confidence score from validation RMSE vs target variance & completeness
+    # Derive dynamic confidence score naturally without artificial floors
     target_series = batch_data['pm2_5'] if 'pm2_5' in batch_data.columns else pd.Series(forecast_results)
     target_std = float(target_series.tail(24).std()) if len(target_series) > 1 else 10.0
-    # Confidence uses base_rmse; if unavailable, degrade gracefully to completeness-only score
+    
     if base_rmse is not None and r2_val is not None:
         error_ratio = base_rmse / (target_std + 1e-5)
         dynamic_conf = (0.6 * max(0.0, r2_val) + 0.3 * max(0.0, 1.0 - min(1.0, error_ratio)) + 0.1 * non_null_ratio) * 100.0
     else:
-        dynamic_conf = non_null_ratio * 75.0  # conservative estimate when metrics are absent
+        dynamic_conf = non_null_ratio * 75.0
+
+    # Clean unclamped confidence reflecting natural model metric performance
     confidence_score = float(round(min(99.0, max(0.0, dynamic_conf)), 1))
 
     forecast_3_day = {

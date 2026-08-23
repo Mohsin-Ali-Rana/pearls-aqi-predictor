@@ -43,6 +43,7 @@ class HotspotStation(BaseModel):
     id: int
     name: str
     aqi: str
+    estimationType: Optional[str] = "Estimated spatial bound derived from regional baseline model"
     color: Optional[str] = "#F1F5F9"
     textColor: Optional[str] = "#0F172A"
 
@@ -173,7 +174,7 @@ def get_live_telemetry():
             healthAdvisory=advisory_title,
             healthDetail=advisory_detail,
             confidenceScore=dynamic_confidence,
-            modelName=f"{ml_output.get('model_name', 'aqi_pm25_predictor')} v{ml_output.get('model_version', 2)}",
+            modelName=f"{ml_output.get('model_name', 'aqi_pm25_predictor')} v{ml_output.get('model_version', 20)}",
             featureStoreStatus=feature_store_status,
             forecasts=[
                 ForecastHorizon(
@@ -219,9 +220,30 @@ def get_live_telemetry():
                 TrendPoint(time="72H Avg", aqi=float(f_72h["predicted_aqi"]), pm25=float(f_72h["predicted_pm2_5"])),
             ],
             hotspots=[
-                HotspotStation(id=1, name="Central Sector Station (Primary Node)", aqi=f"{int(current_aqi)} AQI", color=get_aqi_color(current_aqi), textColor="#FFFFFF"),
-                HotspotStation(id=2, name="Industrial Corridor Sub-Station", aqi=f"{int(round(current_aqi * 1.08, 1))} AQI", color=get_aqi_color(current_aqi * 1.08), textColor="#FFFFFF"),
-                HotspotStation(id=3, name="Suburban Residential Station", aqi=f"{int(round(current_aqi * 0.91, 1))} AQI", color=get_aqi_color(current_aqi * 0.91), textColor="#FFFFFF"),
+                HotspotStation(
+                    id=1,
+                    name="Central Sector Station (Primary Baseline Observation Node)",
+                    aqi=f"{int(current_aqi)} AQI (Baseline Est.)",
+                    estimationType="Primary observation node - direct model baseline",
+                    color=get_aqi_color(current_aqi),
+                    textColor="#FFFFFF"
+                ),
+                HotspotStation(
+                    id=2,
+                    name="Industrial Corridor Sector (Estimated Spatial Bound - Regional Baseline Model)",
+                    aqi=f"{int(round(current_aqi * 1.08, 1))} AQI (Est. Spatial Bound)",
+                    estimationType="Estimated upper spatial bound derived from regional baseline model (+8%)",
+                    color=get_aqi_color(current_aqi * 1.08),
+                    textColor="#FFFFFF"
+                ),
+                HotspotStation(
+                    id=3,
+                    name="Suburban Residential Zone (Estimated Spatial Bound - Regional Baseline Model)",
+                    aqi=f"{int(round(current_aqi * 0.91, 1))} AQI (Est. Spatial Bound)",
+                    estimationType="Estimated lower spatial bound derived from regional baseline model (-9%)",
+                    color=get_aqi_color(current_aqi * 0.91),
+                    textColor="#FFFFFF"
+                ),
             ],
             systemMetrics=SystemMetrics(
                 completeness=str(dynamic_completeness),

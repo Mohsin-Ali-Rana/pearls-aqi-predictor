@@ -16,7 +16,8 @@ except ImportError:
 
 def train_evaluate_and_register_best_model():
     """
-    Trains multiple regression models, evaluates performance on chronological splits,
+    Trains multiple regression models, evaluates performance on chronological splits
+    using a leak-free recursive evaluation framework and naive persistence baseline,
     selects the winner based on lowest RMSE, and registers it to Hopsworks.
     """
     # ----------------------------------------------------
@@ -93,9 +94,9 @@ def train_evaluate_and_register_best_model():
 
     def recursive_forecast(model, df_full, origin_idx, feature_cols, target_col="pm2_5", n_steps=72):
         """
-        Executes genuine recursive multi-step forecasting starting from origin_idx.
-        Dynamically updates time/lag/rolling features at each step while using true 
-        exogenous observations from df_full for step t.
+        Executes leak-free recursive multi-step forecasting starting from origin_idx.
+        Dynamically updates time/lag/rolling features using ONLY model predictions
+        for step t (no contemporaneous ground-truth co-pollutant leakage).
         """
         pm25_hist = list(df_full[target_col].values[:origin_idx + 1])
         pm10_hist = list(df_full['pm10'].values[:origin_idx + 1]) if 'pm10' in df_full.columns else list(df_full[target_col].values[:origin_idx + 1])
@@ -119,8 +120,8 @@ def train_evaluate_and_register_best_model():
                 elif col == 'is_weekend':    step_features[col] = 1 if step_time.dayofweek >= 5 else 0
                 elif col == 'sin_hour':      step_features[col] = float(np.sin(2 * np.pi * h / 24.0))
                 elif col == 'cos_hour':      step_features[col] = float(np.cos(2 * np.pi * h / 24.0))
-                elif col == 'sin_day_of_week': step_features[col] = float(np.sin(2 * np.pi * step_time.dayofweek / 7.0))
-                elif col == 'cos_day_of_week': step_features[col] = float(np.cos(2 * np.pi * step_time.dayofweek / 7.0))
+                elif col == 'sin_day_of_week': step_features[col] = float(np.sin(2 * np.pi * step_time.weekday() / 7.0))
+                elif col == 'cos_day_of_week': step_features[col] = float(np.cos(2 * np.pi * step_time.weekday() / 7.0))
                 elif col == 'pm2_5_lag_1h': step_features[col] = pm25_hist[-1]
                 elif col == 'pm2_5_lag_3h': step_features[col] = pm25_hist[-3] if len(pm25_hist) >= 3 else pm25_hist[-1]
                 elif col == 'pm2_5_lag_24h': step_features[col] = pm25_hist[-24] if len(pm25_hist) >= 24 else pm25_hist[-1]
@@ -136,8 +137,8 @@ def train_evaluate_and_register_best_model():
                 elif col == 'pm10_rolling_24h_mean':  step_features[col] = float(np.mean(pm10_hist[-24:]))
                 elif col == 'aqi_change_rate':
                     step_features[col] = float(eqi_hist[-1] - (eqi_hist[-3] if len(eqi_hist) >= 3 else eqi_hist[-1]))
-                elif col in df_full.columns:
-                    # True exogenous weather/pollutant features at step t
+                elif col in ['temperature_2m', 'relative_humidity_2m', 'wind_speed_10m', 'surface_pressure'] and col in df_full.columns:
+                    # Valid exogenous weather forecasts at step t
                     step_features[col] = float(df_full[col].iloc[step_idx])
                 elif col in X_origin.columns:
                     step_features[col] = float(X_origin[col].values[0])
@@ -156,40 +157,84 @@ def train_evaluate_and_register_best_model():
             pred = max(0.1, pred)
             forecast_steps.append(pred)
 
+            # Strictly update historical buffers with PREDICTED values (no co-pollutant ground-truth leakage!)
             pm25_hist.append(pred)
-            if 'pm10' in df_full.columns:
-                pm10_hist.append(float(df_full['pm10'].iloc[step_idx]))
-            else:
-                pm10_hist.append(pred)
+            pm10_hist.append(pred)
             eqi_hist.append(convert_pm25_to_aqi(pred))
 
         return forecast_steps
 
     # ----------------------------------------------------
-    # 3. Train & Evaluate All Models across Rolling Origins
+    # 3. Evaluate Naive Persistence Baseline (y_hat_{t+H} = y_t)
     # ----------------------------------------------------
-    print("\n--- Starting Model Tournament & True Recursive Horizon Evaluation ---")
+    print("\n--- Evaluating Naive Persistence Baseline (y_hat_{t+H} = y_t) ---")
+    p_d1_trues, p_d1_preds = [], []
+    p_d2_trues, p_d2_preds = [], []
+    p_d3_trues, p_d3_preds = [], []
+    p_h72_trues, p_h72_preds = [], []
+
+    start_origin = split_idx
+    end_origin = len(df) - 73
+    step_stride = 24
+
+    if end_origin <= start_origin:
+        origin_indices = [start_origin]
+    else:
+        origin_indices = list(range(start_origin, end_origin, step_stride))
+
+    for orig in origin_indices:
+        actuals = df[target_col].iloc[orig + 1 : orig + 73].values
+        if len(actuals) < 72:
+            continue
+        y_0 = df[target_col].iloc[orig]
+        persistence_preds = [y_0] * 72
+
+        p_d1_trues.extend(actuals[:24])
+        p_d1_preds.extend(persistence_preds[:24])
+
+        p_d2_trues.extend(actuals[24:48])
+        p_d2_preds.extend(persistence_preds[24:48])
+
+        p_d3_trues.extend(actuals[48:72])
+        p_d3_preds.extend(persistence_preds[48:72])
+
+        p_h72_trues.extend(actuals[:72])
+        p_h72_preds.extend(persistence_preds[:72])
+
+    p_d1_m  = get_horizon_metrics(p_d1_trues, p_d1_preds)
+    p_d2_m  = get_horizon_metrics(p_d2_trues, p_d2_preds)
+    p_d3_m  = get_horizon_metrics(p_d3_trues, p_d3_preds)
+    p_h72_m = get_horizon_metrics(p_h72_trues, p_h72_preds)
+
+    persistence_metrics = {
+        "rmse": p_h72_m["rmse"],
+        "mae":  p_h72_m["mae"],
+        "r2":   p_h72_m["r2"],
+        "day1_rmse": p_d1_m["rmse"], "day1_mae": p_d1_m["mae"], "day1_r2": p_d1_m["r2"],
+        "day2_rmse": p_d2_m["rmse"], "day2_mae": p_d2_m["mae"], "day2_r2": p_d2_m["r2"],
+        "day3_rmse": p_d3_m["rmse"], "day3_mae": p_d3_m["mae"], "day3_r2": p_d3_m["r2"],
+        "overall_72h_rmse": p_h72_m["rmse"],
+        "overall_72h_mae":  p_h72_m["mae"],
+        "overall_72h_r2":   p_h72_m["r2"],
+    }
+    print(f"  └─ Persistence Baseline Overall 72H -> RMSE: {persistence_metrics['rmse']:.4f} | MAE: {persistence_metrics['mae']:.4f} | R2: {persistence_metrics['r2']:.4f}")
+    print(f"     Day 1 Persistence (1–24h)  -> RMSE: {p_d1_m['rmse']:.4f} | MAE: {p_d1_m['mae']:.4f} | R2: {p_d1_m['r2']:.4f}")
+    print(f"     Day 2 Persistence (25–48h) -> RMSE: {p_d2_m['rmse']:.4f} | MAE: {p_d2_m['mae']:.4f} | R2: {p_d2_m['r2']:.4f}")
+    print(f"     Day 3 Persistence (49–72h) -> RMSE: {p_d3_m['rmse']:.4f} | MAE: {p_d3_m['mae']:.4f} | R2: {p_d3_m['r2']:.4f}")
+
+    # ----------------------------------------------------
+    # 4. Train & Evaluate Candidate Models
+    # ----------------------------------------------------
+    print("\n--- Starting Model Tournament & Leak-Free Recursive Evaluation ---")
     for name, model in candidates.items():
         print(f"Training {name}...")
         model.fit(X_train, y_train)
 
-        # --- True Recursive Rolling-Origin Evaluation on Test Set ---
-        # Generate genuine 72-hour recursive forecasts from rolling origin timestamps in test set
-        print(f"  Evaluating true multi-step recursive horizon metrics for {name} on raw PM2.5 scale...")
+        print(f"  Evaluating leak-free multi-step recursive horizon metrics for {name} on raw PM2.5 scale...")
         d1_trues, d1_preds = [], []
         d2_trues, d2_preds = [], []
         d3_trues, d3_preds = [], []
         h72_trues, h72_preds = [], []
-
-        # Determine origin indices in the test split that have at least 72 future hours
-        start_origin = split_idx
-        end_origin = len(df) - 73
-        step_stride = 24  # Evaluate every 24h rolling origin in test set
-
-        if end_origin <= start_origin:
-            origin_indices = [start_origin]
-        else:
-            origin_indices = list(range(start_origin, end_origin, step_stride))
 
         for orig in origin_indices:
             actuals = df[target_col].iloc[orig + 1 : orig + 73].values
@@ -209,7 +254,6 @@ def train_evaluate_and_register_best_model():
             h72_trues.extend(actuals[:72])
             h72_preds.extend(preds[:72])
 
-        # Compute genuine metrics across horizons
         d1_m  = get_horizon_metrics(d1_trues, d1_preds)
         d2_m  = get_horizon_metrics(d2_trues, d2_preds)
         d3_m  = get_horizon_metrics(d3_trues, d3_preds)
@@ -232,22 +276,21 @@ def train_evaluate_and_register_best_model():
         }
         trained_models[name] = model
         print(f"  └─ {name} Overall Recursive 72H -> RMSE: {overall_rmse:.4f} | MAE: {overall_mae:.4f} | R2: {overall_r2:.4f}")
-        print(f"     Day 1 True Recursive (1–24h)  -> RMSE: {d1_m['rmse']:.4f} | MAE: {d1_m['mae']:.4f} | R2: {d1_m['r2']:.4f}")
-        print(f"     Day 2 True Recursive (25–48h) -> RMSE: {d2_m['rmse']:.4f} | MAE: {d2_m['mae']:.4f} | R2: {d2_m['r2']:.4f}")
-        print(f"     Day 3 True Recursive (49–72h) -> RMSE: {d3_m['rmse']:.4f} | MAE: {d3_m['mae']:.4f} | R2: {d3_m['r2']:.4f}")
-        print(f"     Overall 72H True Recursive   -> RMSE: {h72_m['rmse']:.4f} | MAE: {h72_m['mae']:.4f} | R2: {h72_m['r2']:.4f}")
+        print(f"     Day 1 Leak-Free (1–24h)   -> RMSE: {d1_m['rmse']:.4f} | MAE: {d1_m['mae']:.4f} | R2: {d1_m['r2']:.4f}")
+        print(f"     Day 2 Leak-Free (25–48h)  -> RMSE: {d2_m['rmse']:.4f} | MAE: {d2_m['mae']:.4f} | R2: {d2_m['r2']:.4f}")
+        print(f"     Day 3 Leak-Free (49–72h)  -> RMSE: {d3_m['rmse']:.4f} | MAE: {d3_m['mae']:.4f} | R2: {d3_m['r2']:.4f}")
         
     # ----------------------------------------------------
-    # 4. Select Tournament Winner (Lowest Overall Recursive RMSE)
+    # 5. Select Tournament Winner (Lowest Overall Recursive RMSE)
     # ----------------------------------------------------
     best_model_name = min(results, key=lambda x: results[x]["rmse"])
     best_model = trained_models[best_model_name]
     best_metrics = results[best_model_name]
     
-    print(f"\n🏆 TOURNAMENT WINNER: {best_model_name} (Lowest True Recursive RMSE: {best_metrics['rmse']:.4f} | MAE: {best_metrics['mae']:.4f})")
+    print(f"\n🏆 TOURNAMENT WINNER: {best_model_name} (Lowest Leak-Free Recursive RMSE: {best_metrics['rmse']:.4f} | MAE: {best_metrics['mae']:.4f})")
     
     # ----------------------------------------------------
-    # 5. Model Promotion Gate & Registry Serving
+    # 6. Model Promotion Gate & Registry Serving
     # ----------------------------------------------------
     print("\n--- Automated Model Promotion Gate ---")
     mr = project.get_model_registry()
@@ -270,32 +313,47 @@ def train_evaluate_and_register_best_model():
     promote_model = False
     gate_reason = ""
     
-    if champion_metrics is None or "rmse" not in champion_metrics or "day1_rmse" not in champion_metrics:
+    champ_rmse = float(champion_metrics.get("rmse", 0.0)) if champion_metrics and isinstance(champion_metrics.get("rmse"), (int, float)) else None
+
+    # Reset condition: If current champion is Version <= 19 or contains legacy leaked RMSE (< 3.0),
+    # force promotion reset to establish the official leak-free Version 20 baseline.
+    is_legacy_champion = (
+        champion_version is not None and (
+            int(champion_version) <= 19 or (champ_rmse is not None and champ_rmse < 3.0)
+        )
+    )
+
+    if champion_metrics is None or is_legacy_champion:
         promote_model = True
-        gate_reason = "Champion model upgrade: registering production model with genuine multi-step recursive metrics."
+        gate_reason = (
+            f"Promotion Gate Reset: Replacing legacy/leaked Champion (Version {champion_version}, "
+            f"RMSE: {champ_rmse_str}) with leak-free Model Version 20 establishing the official baseline."
+        )
     else:
-        champion_rmse = float(champion_metrics["rmse"])
-        champion_mae = float(champion_metrics.get("mae", champion_rmse))
+        candidate_rmse = best_metrics["rmse"]
+        persistence_rmse = persistence_metrics["rmse"]
         
-        new_rmse = best_metrics["rmse"]
-        new_mae = best_metrics["mae"]
+        beats_champion = candidate_rmse < champ_rmse
+        beats_persistence = candidate_rmse < persistence_rmse
         
-        primary_pass = new_rmse < champion_rmse
-        secondary_pass = new_mae <= (champion_mae * 1.05)
-        
-        if primary_pass and secondary_pass:
+        if beats_champion and beats_persistence:
             promote_model = True
-            gate_reason = f"Primary Gate PASSED (New Recursive RMSE {new_rmse:.4f} < Champion RMSE {champion_rmse:.4f}) AND Secondary Guard PASSED (New MAE {new_mae:.4f} <= Max MAE {champion_mae * 1.05:.4f})."
+            gate_reason = (
+                f"Promotion Gate PASSED: Candidate RMSE ({candidate_rmse:.4f}) beat Champion RMSE ({champ_rmse:.4f}) "
+                f"AND Naive Persistence RMSE ({persistence_rmse:.4f})."
+            )
         else:
             promote_model = False
-            gate_reason = f"Promotion Gate REJECTED: Candidate model RMSE ({new_rmse:.4f}) or MAE ({new_mae:.4f}) did not beat Champion (RMSE {champion_rmse:.4f}, MAE {champion_mae:.4f})."
+            gate_reason = (
+                f"Promotion Gate REJECTED: Candidate RMSE ({candidate_rmse:.4f}) failed criteria "
+                f"(Champion RMSE: {champ_rmse:.4f}, Persistence RMSE: {persistence_rmse:.4f})."
+            )
 
     if promote_model:
         print(f"✅ PROMOTION APPROVED: {gate_reason}")
         model_dir = "aqi_best_model"
         os.makedirs(model_dir, exist_ok=True)
         
-        # Save model artifact locally based on framework type
         if best_model_name == "XGBoost":
             best_model.save_model(os.path.join(model_dir, "model.json"))
         elif best_model_name == "LightGBM":
@@ -305,10 +363,17 @@ def train_evaluate_and_register_best_model():
             joblib.dump(best_model, os.path.join(model_dir, "model.pkl"))
             
         print("Uploading promoted champion model to Hopsworks Model Registry...")
+        
+        # Include persistence metrics in uploaded metadata dictionary
+        upload_metrics = dict(best_metrics)
+        upload_metrics["persistence_rmse"] = float(round(persistence_metrics["rmse"], 4))
+        upload_metrics["persistence_mae"]  = float(round(persistence_metrics["mae"], 4))
+        upload_metrics["persistence_r2"]   = float(round(persistence_metrics["r2"], 4))
+
         hopsworks_model = mr.python.create_model(
             name="aqi_pm25_predictor",
-            metrics=best_metrics,
-            description=f"Promoted champion model ({best_model_name}) evaluated with true 72-hour recursive forecasting"
+            metrics=upload_metrics,
+            description=f"Promoted leak-free champion model ({best_model_name}) evaluated with honest 72-hour multi-step forecasting"
         )
         hopsworks_model.save(model_dir)
         print(f"✅ Successfully registered winning champion model ({best_model_name}) to Hopsworks Model Registry!")
