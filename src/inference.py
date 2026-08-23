@@ -34,50 +34,60 @@ def run_inference():
     try:
         models = mr.get_models("aqi_direct_predictor")
     except Exception:
-        pass
+        models = []
 
-    # Priority 2: Filter 'aqi_pm25_predictor' for multi-model bundle versions (version >= 21)
+    # Priority 2: Fallback to 'aqi_pm25_predictor'
     if not models:
         try:
-            all_pm25_models = mr.get_models("aqi_pm25_predictor")
-            # Only pick versions >= 21 which contain the 3 Direct Models bundle
-            models = [m for m in all_pm25_models if int(m.version) >= 21]
-            if not models:
-                # If no version >= 21, fallback to highest version
-                models = all_pm25_models
-        except Exception:
             models = mr.get_models("aqi_pm25_predictor")
+        except Exception:
+            models = []
 
     if not models:
-        raise ValueError("No models found in Hopsworks Model Registry under 'aqi_direct_predictor' or 'aqi_pm25_predictor'.")
+        raise ValueError("No registered models found in Hopsworks Model Registry.")
 
     model_meta = max(models, key=lambda m: int(m.version))
     print(f"Loaded Model Registry Version: {model_meta.version} (Model Name: {model_meta.name})")
     
-    # Download fresh artifact without using stale cache
+    # Download artifact from Model Registry
     model_dir = model_meta.download()
     
     model_metrics = model_meta.training_metrics or {"rmse": 12.75, "mae": 10.10, "r2": 0.28}
     
-    # Load 3 Direct Models artifact bundle with strict validation
-    model_pkl_path = os.path.join(model_dir, "model.pkl")
-    if not os.path.exists(model_pkl_path):
-        raise FileNotFoundError(f"Model artifact 'model.pkl' not found in downloaded directory {model_dir}")
+    # Flexible model loader: handles 3-model bundle pkl, legacy single pkl, json, or txt
+    model_bundle = None
+    model_24h = None
+    model_48h = None
+    model_72h = None
 
-    model_artifact = joblib.load(model_pkl_path)
-    if isinstance(model_artifact, dict) and "model_24h" in model_artifact:
-        model_bundle = model_artifact
-        model_24h = model_bundle["model_24h"]
-        model_48h = model_bundle["model_48h"]
-        model_72h = model_bundle["model_72h"]
-        print(f"✅ Successfully loaded 3 Direct Models bundle (Winners: 24h={model_bundle.get('day1_winner')}, 48h={model_bundle.get('day2_winner')}, 72h={model_bundle.get('day3_winner')}).")
+    model_pkl_path = os.path.join(model_dir, "model.pkl")
+    model_json_path = os.path.join(model_dir, "model.json")
+    model_txt_path = os.path.join(model_dir, "model.txt")
+
+    if os.path.exists(model_pkl_path):
+        model_artifact = joblib.load(model_pkl_path)
+        if isinstance(model_artifact, dict) and "model_24h" in model_artifact:
+            model_bundle = model_artifact
+            model_24h = model_bundle["model_24h"]
+            model_48h = model_bundle["model_48h"]
+            model_72h = model_bundle["model_72h"]
+            print(f"✅ Successfully loaded 3 Direct Models bundle (Winners: 24h={model_bundle.get('day1_winner')}, 48h={model_bundle.get('day2_winner')}, 72h={model_bundle.get('day3_winner')}).")
+        else:
+            print("⚠️ Loaded single model.pkl artifact. Serving fallback single-estimator heads.")
+            model_24h, model_48h, model_72h = model_artifact, model_artifact, model_artifact
+    elif os.path.exists(model_json_path):
+        print("⚠️ Loaded legacy XGBoost model.json artifact.")
+        import xgboost as xgb
+        single_m = xgb.XGBRegressor()
+        single_m.load_model(model_json_path)
+        model_24h, model_48h, model_72h = single_m, single_m, single_m
+    elif os.path.exists(model_txt_path):
+        print("⚠️ Loaded legacy LightGBM model.txt artifact.")
+        import lightgbm as lgb
+        single_m = lgb.Booster(model_file=model_txt_path)
+        model_24h, model_48h, model_72h = single_m, single_m, single_m
     else:
-        # Fallback to single estimator for legacy models (e.g. Version <= 20)
-        print("⚠️ Warning: Downloaded legacy single model. Assigning single model instance to horizon heads.")
-        model_bundle = None
-        model_24h = model_artifact
-        model_48h = model_artifact
-        model_72h = model_artifact
+        raise FileNotFoundError(f"No recognizable model file (model.pkl, model.json, model.txt) found in {model_dir}")
 
     # ----------------------------------------------------
     # 2. Pull Fresh Feature State X_t0 at t=0
