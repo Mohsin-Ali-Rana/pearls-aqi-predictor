@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import pandas as pd
 import numpy as np
 import hopsworks
@@ -66,11 +66,12 @@ def generate_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 def run_feature_pipeline():
-    print("Fetching raw dataset dynamically up to today...")
+    print("Fetching raw dataset dynamically up to current UTC date...")
     
-    # Fetch 2 years of historical data up to yesterday for feature group v2
-    today_str = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
-    start_str = (datetime.now() - timedelta(days=730)).strftime("%Y-%m-%d")
+    # Fetch historical data up to today's current UTC date to prevent staleness
+    today_utc = datetime.now(timezone.utc)
+    today_str = today_utc.strftime("%Y-%m-%d")
+    start_str = (today_utc - timedelta(days=730)).strftime("%Y-%m-%d")
     
     raw_df = fetch_historical_aqi(LOCATION_LATITUDE, LOCATION_LONGITUDE, start_str, today_str)
     
@@ -79,6 +80,8 @@ def run_feature_pipeline():
     if feature_df.empty:
         raise ValueError("Engineered feature set is empty after lag computation. Insufficient historical rows fetched.")
     feature_df["time"] = pd.to_datetime(feature_df["time"])
+
+    print(f"Latest engineered feature timestamp: {feature_df['time'].max()}")
 
     print("\nConnecting to Hopsworks Feature Store...")
     project = hopsworks.login(
@@ -99,7 +102,7 @@ def run_feature_pipeline():
         description="Hourly engineered air quality, meteorological and cyclical time features"
     )
     
-    # Sync schema for any new engineered features (e.g. continuous sin/cos time features)
+    # Sync schema for any new engineered features
     existing_feat_names = [f.name for f in aqi_fg.features]
     new_features = []
     from hsfs.feature import Feature
@@ -114,10 +117,10 @@ def run_feature_pipeline():
         except Exception as e:
             print(f"Note on append_features: {e}")
 
-    print("Persisting data to Hopsworks...")
+    print("Persisting fresh data batch to Hopsworks...")
     aqi_fg.insert(feature_df, storage="online", wait=True)
         
-    print("\n✅ Successfully persisted live features to Hopsworks Feature Store!")
+    print("\n✅ Successfully persisted live fresh features to Hopsworks Feature Store!")
 
 if __name__ == "__main__":
     run_feature_pipeline()

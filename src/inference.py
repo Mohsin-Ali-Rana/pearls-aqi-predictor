@@ -213,7 +213,7 @@ def run_inference():
             if time_diffs.loc[min_idx] <= pd.Timedelta(hours=1):
                 exo_row = df_exo_fc.loc[min_idx].to_dict()
 
-        # 2. Update temporal cyclical features
+        # 2. Update temporal cyclical features dynamically for every step t (1..72)
         if "hour" in feature_cols:
             step_features["hour"] = step_time.hour
         if "day_of_week" in feature_cols:
@@ -231,12 +231,12 @@ def run_inference():
         if "cos_day_of_week" in feature_cols:
             step_features["cos_day_of_week"] = float(np.cos(2 * np.pi * step_time.weekday() / 7.0))
 
-        # 3. Update dynamic lag, rolling, and exogenous features
+        # 3. Dynamic lag, rolling, and exogenous weather features
         for col in feature_cols:
             if col in step_features:
                 continue
             
-            # Specific lag column names
+            # Lag column updates from growing simulation history
             if col == "pm2_5_lag_1h":
                 step_features[col] = pm25_hist[-1]
             elif col == "pm2_5_lag_3h":
@@ -255,7 +255,7 @@ def run_inference():
                 step_features[col] = eqi_hist[-3] if len(eqi_hist) >= 3 else eqi_hist[-1]
             elif col == "european_aqi_lag_24h":
                 step_features[col] = eqi_hist[-24] if len(eqi_hist) >= 24 else eqi_hist[-1]
-            # Rolling window statistics
+            # Rolling window statistics from growing simulation history
             elif col == "pm2_5_rolling_6h_mean":
                 step_features[col] = float(np.mean(pm25_hist[-6:]))
             elif col == "pm2_5_rolling_24h_mean":
@@ -269,8 +269,8 @@ def run_inference():
                 eqi_1h = eqi_hist[-1]
                 eqi_3h = eqi_hist[-3] if len(eqi_hist) >= 3 else eqi_hist[-1]
                 step_features[col] = float(eqi_1h - eqi_3h)
-            # Weather Forecast injection for step t (only valid exogenous weather variables)
-            elif col in ['temperature_2m', 'relative_humidity_2m', 'wind_speed_10m', 'surface_pressure'] and col in exo_row and exo_row[col] is not None and not pd.isna(exo_row[col]):
+            # Weather & Exogenous Forecast injection for step t (only valid exogenous variables)
+            elif col in ['temperature_2m', 'relative_humidity_2m', 'wind_speed_10m', 'surface_pressure', 'nitrogen_dioxide', 'ozone'] and col in exo_row and exo_row[col] is not None and not pd.isna(exo_row[col]):
                 step_features[col] = float(exo_row[col])
             elif col in X_latest.columns:
                 step_features[col] = float(X_latest[col].values[0])
@@ -298,7 +298,7 @@ def run_inference():
         pred_pm25 = max(0.1, pred_pm25)
         forecast_results.append(pred_pm25)
 
-        # Update historical buffers for subsequent recursive steps (no co-pollutant leakage!)
+        # Update historical simulation buffers for subsequent recursive steps (no co-pollutant leakage!)
         pm25_hist.append(pred_pm25)
         pm10_hist.append(pred_pm25)
         eqi_hist.append(convert_pm25_to_aqi(pred_pm25))
@@ -377,7 +377,7 @@ def run_inference():
     print(f"  Overall 72-Hour      -> RMSE: {_fmt(overall_72h_rmse)} | MAE: {_fmt(overall_72h_mae)} | R²: {_fmt(overall_72h_r2)}")
 
     # ----------------------------------------------------
-    # 4. Dynamic Telemetry & Feature Store Metrics Calculation
+    # 4. Dynamic Telemetry & Normalized Accuracy Confidence Formulation
     # ----------------------------------------------------
     recent_vector = batch_data[feature_cols].tail(24)
     non_null_ratio = float(recent_vector.notnull().mean().mean())
@@ -391,18 +391,15 @@ def run_inference():
     else:
         sensor_accuracy = float(round(non_null_ratio * 100.0, 1))
 
-    # Derive dynamic confidence score naturally without artificial floors
+    # Normalized Mean Absolute Percentage Accuracy formula preventing collapse during low-variance periods:
+    # confidence = max(15.0, min(95.0, (1.0 - (mae / max(mean_target, 1.0))) * 100.0))
     target_series = batch_data['pm2_5'] if 'pm2_5' in batch_data.columns else pd.Series(forecast_results)
-    target_std = float(target_series.tail(24).std()) if len(target_series) > 1 else 10.0
+    mean_target = float(target_series.tail(24).mean()) if len(target_series) > 0 else 18.73
+    eval_mae = overall_72h_mae if overall_72h_mae is not None else (base_mae if base_mae is not None else 4.5)
     
-    if base_rmse is not None and r2_val is not None:
-        error_ratio = base_rmse / (target_std + 1e-5)
-        dynamic_conf = (0.6 * max(0.0, r2_val) + 0.3 * max(0.0, 1.0 - min(1.0, error_ratio)) + 0.1 * non_null_ratio) * 100.0
-    else:
-        dynamic_conf = non_null_ratio * 75.0
-
-    # Clean unclamped confidence reflecting natural model metric performance
-    confidence_score = float(round(min(99.0, max(0.0, dynamic_conf)), 1))
+    accuracy_ratio = 1.0 - (eval_mae / max(mean_target, 1.0))
+    dynamic_conf = max(15.0, min(95.0, accuracy_ratio * 100.0))
+    confidence_score = float(round(dynamic_conf, 1))
 
     forecast_3_day = {
         "24h": {
