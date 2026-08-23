@@ -181,19 +181,20 @@ def train_evaluate_and_register_best_model():
     print(f"  Day 3 (72h) [{winner_d3_name:10s}] -> RMSE: {d3_m['rmse']:.4f} | MAE: {d3_m['mae']:.4f} | R2: {d3_m['r2']:.4f}")
     print(f"  Overall 72H Direct Average -> RMSE: {overall_rmse:.4f} | MAE: {overall_mae:.4f} | R2: {overall_r2:.4f}")
 
+    # Hopsworks metadata ONLY allows numbers (floats/ints) - no strings!
     best_metrics = {
         "rmse": overall_rmse,
         "mae":  overall_mae,
         "r2":   overall_r2,
-        "day1_rmse": d1_m["rmse"], "day1_mae": d1_m["mae"], "day1_r2": d1_m["r2"], "day1_winner": winner_d1_name,
-        "day2_rmse": d2_m["rmse"], "day2_mae": d2_m["mae"], "day2_r2": d2_m["r2"], "day2_winner": winner_d2_name,
-        "day3_rmse": d3_m["rmse"], "day3_mae": d3_m["mae"], "day3_r2": d3_m["r2"], "day3_winner": winner_d3_name,
+        "day1_rmse": float(d1_m["rmse"]), "day1_mae": float(d1_m["mae"]), "day1_r2": float(d1_m["r2"]),
+        "day2_rmse": float(d2_m["rmse"]), "day2_mae": float(d2_m["mae"]), "day2_r2": float(d2_m["r2"]),
+        "day3_rmse": float(d3_m["rmse"]), "day3_mae": float(d3_m["mae"]), "day3_r2": float(d3_m["r2"]),
         "overall_72h_rmse": overall_rmse,
         "overall_72h_mae":  overall_mae,
         "overall_72h_r2":   overall_r2,
-        "persistence_rmse": persistence_rmse,
-        "persistence_mae":  persistence_mae,
-        "persistence_r2":   persistence_r2
+        "persistence_rmse": float(persistence_rmse),
+        "persistence_mae":  float(persistence_mae),
+        "persistence_r2":   float(persistence_r2)
     }
 
     # ----------------------------------------------------
@@ -219,16 +220,16 @@ def train_evaluate_and_register_best_model():
     joblib.dump(multi_model_bundle, os.path.join(model_dir, "model.pkl"))
     print("Successfully packaged 3 Direct Models into model.pkl artifact.")
 
-    # Register under both 'aqi_direct_predictor' and 'aqi_pm25_predictor'
-    for reg_name in ["aqi_direct_predictor", "aqi_pm25_predictor"]:
-        print(f"Uploading promoted 3 Direct Models bundle to Hopsworks Model Registry ('{reg_name}')...")
-        hopsworks_model = mr.python.create_model(
-            name=reg_name,
-            metrics=best_metrics,
-            description="Promoted 3 Direct Models Architecture (independent heads for 24h, 48h, 72h)"
-        )
-        hopsworks_model.save(model_dir)
-        print(f"✅ Successfully registered winning Direct Model bundle to Hopsworks Model Registry ('{reg_name}')!")
+    # Register under 'aqi_pm25_predictor' registry
+    reg_name = "aqi_pm25_predictor"
+    print(f"Uploading promoted 3 Direct Models bundle to Hopsworks Model Registry ('{reg_name}')...")
+    hopsworks_model = mr.python.create_model(
+        name=reg_name,
+        metrics=best_metrics,
+        description=f"Promoted 3 Direct Models Architecture (24h={winner_d1_name}, 48h={winner_d2_name}, 72h={winner_d3_name})"
+    )
+    hopsworks_model.save(model_dir)
+    print(f"✅ Successfully registered winning Direct Model bundle to Hopsworks Model Registry ('{reg_name}')!")
 
 if __name__ == "__main__":
     print("Starting Direct Multi-Horizon 3-Model Tournament Pipeline...")

@@ -14,7 +14,7 @@ except ImportError:
 
 def run_inference():
     """
-    Connects to Hopsworks, downloads the registered 3 Direct Models bundle,
+    Connects to Hopsworks, downloads the registered 3 Direct Models bundle (v21+),
     pulls real-time feature streams, and calculates 3-day direct multi-horizon predictions
     without any recursive autoregressive feedback loops.
     """
@@ -27,67 +27,35 @@ def run_inference():
     )
 
     mr = project.get_model_registry()
-    print("Fetching latest promoted Direct Model bundle...")
+    print("Fetching latest promoted 3 Direct Models bundle...")
     
-    # Priority: 1. Try 'aqi_direct_predictor' registry
-    models = []
-    try:
-        models = mr.get_models("aqi_direct_predictor")
-    except Exception:
-        models = []
-
-    # Priority 2: Fallback to 'aqi_pm25_predictor'
+    models = mr.get_models("aqi_pm25_predictor")
     if not models:
-        try:
-            models = mr.get_models("aqi_pm25_predictor")
-        except Exception:
-            models = []
+        raise ValueError("No registered models found in Hopsworks Model Registry under 'aqi_pm25_predictor'.")
 
-    if not models:
-        raise ValueError("No registered models found in Hopsworks Model Registry.")
-
+    # Pick the latest promoted version (v21+)
     model_meta = max(models, key=lambda m: int(m.version))
     print(f"Loaded Model Registry Version: {model_meta.version} (Model Name: {model_meta.name})")
     
     # Download artifact from Model Registry
     model_dir = model_meta.download()
     
-    model_metrics = model_meta.training_metrics or {"rmse": 12.75, "mae": 10.10, "r2": 0.28}
+    model_metrics = model_meta.training_metrics or {}
     
-    # Flexible model loader: handles 3-model bundle pkl, legacy single pkl, json, or txt
-    model_bundle = None
-    model_24h = None
-    model_48h = None
-    model_72h = None
-
+    # Strict validation of 3 Direct Models bundle artifact
     model_pkl_path = os.path.join(model_dir, "model.pkl")
-    model_json_path = os.path.join(model_dir, "model.json")
-    model_txt_path = os.path.join(model_dir, "model.txt")
+    if not os.path.exists(model_pkl_path):
+        raise FileNotFoundError(f"Promoted 3 Direct Models artifact 'model.pkl' not found in downloaded directory {model_dir}")
 
-    if os.path.exists(model_pkl_path):
-        model_artifact = joblib.load(model_pkl_path)
-        if isinstance(model_artifact, dict) and "model_24h" in model_artifact:
-            model_bundle = model_artifact
-            model_24h = model_bundle["model_24h"]
-            model_48h = model_bundle["model_48h"]
-            model_72h = model_bundle["model_72h"]
-            print(f"✅ Successfully loaded 3 Direct Models bundle (Winners: 24h={model_bundle.get('day1_winner')}, 48h={model_bundle.get('day2_winner')}, 72h={model_bundle.get('day3_winner')}).")
-        else:
-            print("⚠️ Loaded single model.pkl artifact. Serving fallback single-estimator heads.")
-            model_24h, model_48h, model_72h = model_artifact, model_artifact, model_artifact
-    elif os.path.exists(model_json_path):
-        print("⚠️ Loaded legacy XGBoost model.json artifact.")
-        import xgboost as xgb
-        single_m = xgb.XGBRegressor()
-        single_m.load_model(model_json_path)
-        model_24h, model_48h, model_72h = single_m, single_m, single_m
-    elif os.path.exists(model_txt_path):
-        print("⚠️ Loaded legacy LightGBM model.txt artifact.")
-        import lightgbm as lgb
-        single_m = lgb.Booster(model_file=model_txt_path)
-        model_24h, model_48h, model_72h = single_m, single_m, single_m
-    else:
-        raise FileNotFoundError(f"No recognizable model file (model.pkl, model.json, model.txt) found in {model_dir}")
+    model_bundle = joblib.load(model_pkl_path)
+    if not isinstance(model_bundle, dict) or "model_24h" not in model_bundle:
+        raise ValueError(f"Loaded model artifact from Version {model_meta.version} is not a valid 3-Direct-Models bundle dictionary!")
+
+    model_24h = model_bundle["model_24h"]
+    model_48h = model_bundle["model_48h"]
+    model_72h = model_bundle["model_72h"]
+    
+    print(f"✅ Successfully loaded 3 Direct Models bundle (Winners: 24h={model_bundle.get('day1_winner')}, 48h={model_bundle.get('day2_winner')}, 72h={model_bundle.get('day3_winner')}).")
 
     # ----------------------------------------------------
     # 2. Pull Fresh Feature State X_t0 at t=0
@@ -138,7 +106,7 @@ def run_inference():
     # ----------------------------------------------------
     print("\n--- Generating Direct Multi-Horizon Predictions from Single State X_t0 ---")
     
-    req_cols = model_bundle.get("feature_cols", feature_cols) if model_bundle else feature_cols
+    req_cols = model_bundle.get("feature_cols", feature_cols)
     X_input = X_t0.reindex(columns=req_cols, fill_value=0.0)
 
     def _predict(m, x_df):
@@ -263,7 +231,7 @@ def run_inference():
     else:
         sensor_accuracy = float(round(non_null_ratio * 100.0, 1))
 
-    # Dynamic confidence based on validation residual variance without hard-clamping floors
+    # Dynamic confidence based on validation residual variance
     eval_mae = d1_mae if d1_mae is not None else 8.89
     target_level = max(current_pm25, pred_24h, 1.0)
     
