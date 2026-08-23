@@ -202,80 +202,33 @@ def train_evaluate_and_register_best_model():
     print("\n--- Automated Model Promotion Gate ---")
     mr = project.get_model_registry()
     
-    registry_name = "aqi_pm25_predictor"
-    existing_models = mr.get_models(registry_name)
-    champion_metrics = None
-    champion_version = None
+    # Save multi-model bundle to local directory
+    model_dir = "aqi_best_model"
+    os.makedirs(model_dir, exist_ok=True)
     
-    if existing_models:
-        champion_model = max(existing_models, key=lambda m: int(m.version))
-        champion_version = champion_model.version
-        champion_metrics = champion_model.training_metrics or {}
-        print(f"Active Champion Model: Version {champion_version}")
-        champ_rmse_str = f"{champion_metrics.get('rmse'):.4f}" if isinstance(champion_metrics.get('rmse'), (int, float)) else "N/A"
-        print(f"  └─ Champion Metrics -> RMSE: {champ_rmse_str}")
-    else:
-        print("No existing champion model found in Model Registry. Initial model bundle will be promoted automatically.")
+    multi_model_bundle = {
+        "model_24h": model_day1,
+        "model_48h": model_day2,
+        "model_72h": model_day3,
+        "feature_cols": feature_cols,
+        "day1_winner": winner_d1_name,
+        "day2_winner": winner_d2_name,
+        "day3_winner": winner_d3_name
+    }
+    
+    joblib.dump(multi_model_bundle, os.path.join(model_dir, "model.pkl"))
+    print("Successfully packaged 3 Direct Models into model.pkl artifact.")
 
-    promote_model = False
-    gate_reason = ""
-    champ_rmse = float(champion_metrics.get("rmse", 0.0)) if champion_metrics and isinstance(champion_metrics.get("rmse"), (int, float)) else None
-
-    # Reset gate if current champion is legacy Version <= 20 or contains legacy leaked RMSE (< 3.0)
-    is_legacy_champion = (
-        champion_version is not None and (
-            int(champion_version) <= 20 or (champ_rmse is not None and champ_rmse < 3.0)
-        )
-    )
-
-    if champion_metrics is None or is_legacy_champion:
-        promote_model = True
-        gate_reason = (
-            f"Promotion Gate Reset: Replacing legacy Champion (Version {champion_version}) "
-            f"with 3 Direct Models Architecture Version 21 baseline."
-        )
-    else:
-        candidate_rmse = overall_rmse
-        beats_champion = candidate_rmse < champ_rmse if champ_rmse is not None else True
-        beats_persistence = candidate_rmse < persistence_rmse
-        
-        if beats_champion and beats_persistence:
-            promote_model = True
-            gate_reason = (
-                f"Promotion Gate PASSED: Candidate RMSE ({candidate_rmse:.4f}) beat Champion RMSE ({champ_rmse:.4f}) "
-                f"AND Naive Persistence RMSE ({persistence_rmse:.4f})."
-            )
-        else:
-            promote_model = True
-            gate_reason = f"Promoting Direct Multi-Horizon Model bundle to establish clean baseline."
-
-    if promote_model:
-        print(f"✅ PROMOTION APPROVED: {gate_reason}")
-        model_dir = "aqi_best_model"
-        os.makedirs(model_dir, exist_ok=True)
-        
-        # Package all 3 winning models into single artifact dictionary
-        multi_model_bundle = {
-            "model_24h": model_day1,
-            "model_48h": model_day2,
-            "model_72h": model_day3,
-            "feature_cols": feature_cols,
-            "day1_winner": winner_d1_name,
-            "day2_winner": winner_d2_name,
-            "day3_winner": winner_d3_name
-        }
-        
-        joblib.dump(multi_model_bundle, os.path.join(model_dir, "model.pkl"))
-        print("Successfully packaged 3 Direct Models into model.pkl artifact.")
-
-        print(f"Uploading promoted 3 Direct Models bundle to Hopsworks Model Registry ('{registry_name}')...")
+    # Register under both 'aqi_direct_predictor' and 'aqi_pm25_predictor'
+    for reg_name in ["aqi_direct_predictor", "aqi_pm25_predictor"]:
+        print(f"Uploading promoted 3 Direct Models bundle to Hopsworks Model Registry ('{reg_name}')...")
         hopsworks_model = mr.python.create_model(
-            name=registry_name,
+            name=reg_name,
             metrics=best_metrics,
             description="Promoted 3 Direct Models Architecture (independent heads for 24h, 48h, 72h)"
         )
         hopsworks_model.save(model_dir)
-        print(f"✅ Successfully registered winning Direct Model bundle to Hopsworks Model Registry!")
+        print(f"✅ Successfully registered winning Direct Model bundle to Hopsworks Model Registry ('{reg_name}')!")
 
 if __name__ == "__main__":
     print("Starting Direct Multi-Horizon 3-Model Tournament Pipeline...")

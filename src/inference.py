@@ -38,41 +38,27 @@ def run_inference():
         models = mr.get_models("aqi_pm25_predictor")
 
     model_meta = max(models, key=lambda m: int(m.version))
-    print(f"Loaded Model Registry Version: {model_meta.version} (Model: {model_meta.name})")
+    print(f"Loaded Model Registry Version: {model_meta.version} (Model Name: {model_meta.name})")
+    
+    # Download fresh artifact without using stale cache
     model_dir = model_meta.download()
     
     model_metrics = model_meta.training_metrics or {"rmse": 12.75, "mae": 10.10, "r2": 0.28}
     
-    # Load 3 Direct Models artifact bundle
-    model_bundle = None
-    model_24h = None
-    model_48h = None
-    model_72h = None
+    # Load 3 Direct Models artifact bundle with strict validation
+    model_pkl_path = os.path.join(model_dir, "model.pkl")
+    if not os.path.exists(model_pkl_path):
+        raise FileNotFoundError(f"Model artifact 'model.pkl' not found in downloaded directory {model_dir}")
 
-    if os.path.exists(os.path.join(model_dir, "model.pkl")):
-        model_artifact = joblib.load(os.path.join(model_dir, "model.pkl"))
-        if isinstance(model_artifact, dict) and "model_24h" in model_artifact:
-            model_bundle = model_artifact
-            model_24h = model_bundle["model_24h"]
-            model_48h = model_bundle["model_48h"]
-            model_72h = model_bundle["model_72h"]
-            print(f"✅ Successfully loaded 3 Direct Models bundle (24h, 48h, 72h independent heads).")
-        else:
-            model_24h = model_artifact
-            model_48h = model_artifact
-            model_72h = model_artifact
-            print("Loaded single-model artifact fallback.")
-    elif os.path.exists(os.path.join(model_dir, "model.json")):
-        import xgboost as xgb
-        single_m = xgb.XGBRegressor()
-        single_m.load_model(os.path.join(model_dir, "model.json"))
-        model_24h, model_48h, model_72h = single_m, single_m, single_m
-        print("Loaded XGBoost single-model fallback.")
-    elif os.path.exists(os.path.join(model_dir, "model.txt")):
-        import lightgbm as lgb
-        single_m = lgb.Booster(model_file=os.path.join(model_dir, "model.txt"))
-        model_24h, model_48h, model_72h = single_m, single_m, single_m
-        print("Loaded LightGBM single-model fallback.")
+    model_artifact = joblib.load(model_pkl_path)
+    if isinstance(model_artifact, dict) and "model_24h" in model_artifact:
+        model_bundle = model_artifact
+        model_24h = model_bundle["model_24h"]
+        model_48h = model_bundle["model_48h"]
+        model_72h = model_bundle["model_72h"]
+        print(f"✅ Successfully loaded 3 Direct Models bundle (Winners: 24h={model_bundle.get('day1_winner')}, 48h={model_bundle.get('day2_winner')}, 72h={model_bundle.get('day3_winner')}).")
+    else:
+        raise ValueError("Loaded model artifact is not a valid 3-Direct-Models bundle. Ensure Model Version >= 21 is loaded from Hopsworks.")
 
     # ----------------------------------------------------
     # 2. Pull Fresh Feature State X_t0 at t=0
@@ -123,7 +109,7 @@ def run_inference():
     # ----------------------------------------------------
     print("\n--- Generating Direct Multi-Horizon Predictions from Single State X_t0 ---")
     
-    req_cols = model_bundle.get("feature_cols", feature_cols) if model_bundle else feature_cols
+    req_cols = model_bundle.get("feature_cols", feature_cols)
     X_input = X_t0.reindex(columns=req_cols, fill_value=0.0)
 
     def _predict(m, x_df):
@@ -145,7 +131,6 @@ def run_inference():
     # ----------------------------------------------------
     # 4. Hourly Weather-Driven Interpolation Curve (No Recursive Feedback!)
     # ----------------------------------------------------
-    # Fetch live hourly Open-Meteo weather forecasts for dynamic modulation across 72 hours
     import requests
     try:
         from config import LOCATION_LATITUDE, LOCATION_LONGITUDE
