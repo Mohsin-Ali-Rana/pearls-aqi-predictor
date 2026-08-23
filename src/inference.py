@@ -29,13 +29,27 @@ def run_inference():
     mr = project.get_model_registry()
     print("Fetching latest promoted Direct Model bundle...")
     
-    # Try fetching from 'aqi_direct_predictor' registry first, falling back to 'aqi_pm25_predictor'
+    # Priority: 1. Try 'aqi_direct_predictor' registry
+    models = []
     try:
         models = mr.get_models("aqi_direct_predictor")
-        if not models:
-            models = mr.get_models("aqi_pm25_predictor")
     except Exception:
-        models = mr.get_models("aqi_pm25_predictor")
+        pass
+
+    # Priority 2: Filter 'aqi_pm25_predictor' for multi-model bundle versions (version >= 21)
+    if not models:
+        try:
+            all_pm25_models = mr.get_models("aqi_pm25_predictor")
+            # Only pick versions >= 21 which contain the 3 Direct Models bundle
+            models = [m for m in all_pm25_models if int(m.version) >= 21]
+            if not models:
+                # If no version >= 21, fallback to highest version
+                models = all_pm25_models
+        except Exception:
+            models = mr.get_models("aqi_pm25_predictor")
+
+    if not models:
+        raise ValueError("No models found in Hopsworks Model Registry under 'aqi_direct_predictor' or 'aqi_pm25_predictor'.")
 
     model_meta = max(models, key=lambda m: int(m.version))
     print(f"Loaded Model Registry Version: {model_meta.version} (Model Name: {model_meta.name})")
@@ -58,7 +72,12 @@ def run_inference():
         model_72h = model_bundle["model_72h"]
         print(f"✅ Successfully loaded 3 Direct Models bundle (Winners: 24h={model_bundle.get('day1_winner')}, 48h={model_bundle.get('day2_winner')}, 72h={model_bundle.get('day3_winner')}).")
     else:
-        raise ValueError("Loaded model artifact is not a valid 3-Direct-Models bundle. Ensure Model Version >= 21 is loaded from Hopsworks.")
+        # Fallback to single estimator for legacy models (e.g. Version <= 20)
+        print("⚠️ Warning: Downloaded legacy single model. Assigning single model instance to horizon heads.")
+        model_bundle = None
+        model_24h = model_artifact
+        model_48h = model_artifact
+        model_72h = model_artifact
 
     # ----------------------------------------------------
     # 2. Pull Fresh Feature State X_t0 at t=0
@@ -109,7 +128,7 @@ def run_inference():
     # ----------------------------------------------------
     print("\n--- Generating Direct Multi-Horizon Predictions from Single State X_t0 ---")
     
-    req_cols = model_bundle.get("feature_cols", feature_cols)
+    req_cols = model_bundle.get("feature_cols", feature_cols) if model_bundle else feature_cols
     X_input = X_t0.reindex(columns=req_cols, fill_value=0.0)
 
     def _predict(m, x_df):
