@@ -14,6 +14,7 @@ __pycache__/
 data/
 *.csv
 *.pkl
+*.log
 aqi_best_model/
 .env
 .env.*

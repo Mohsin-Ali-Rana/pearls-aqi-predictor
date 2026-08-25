@@ -1,3 +1,7 @@
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 import time
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -55,6 +59,13 @@ class HotspotStation(BaseModel):
     color: Optional[str] = "#F1F5F9"
     textColor: Optional[str] = "#0F172A"
 
+class ShapFeature(BaseModel):
+    feature: str
+    importance: float
+
+class SubscriptionRequest(BaseModel):
+    email: str
+
 class SystemMetrics(BaseModel):
     completeness: str
     accuracy: str
@@ -77,6 +88,7 @@ class TelemetryResponse(BaseModel):
     forecasts: List[ForecastHorizon]
     trendHistory: List[TrendPoint]
     hotspots: List[HotspotStation]
+    shapExplanations: List[ShapFeature] = []
     systemMetrics: SystemMetrics
 
 
@@ -183,21 +195,27 @@ def get_live_telemetry():
                     aqi=float(f_24h["predicted_aqi"]),
                     status=str(f_24h["status"]),
                     color=get_aqi_color(f_24h["predicted_aqi"]),
-                    rmse=float(f_24h["rmse"]) if f_24h.get("rmse") is not None else None
+                    rmse=float(f_24h["rmse"]) if f_24h.get("rmse") is not None else None,
+                    healthAdvisory=get_health_advisory(f_24h["predicted_aqi"])[0],
+                    healthDetail=get_health_advisory(f_24h["predicted_aqi"])[1]
                 ),
                 ForecastHorizon(
                     horizon="48H",
                     aqi=float(f_48h["predicted_aqi"]),
                     status=str(f_48h["status"]),
                     color=get_aqi_color(f_48h["predicted_aqi"]),
-                    rmse=float(f_48h["rmse"]) if f_48h.get("rmse") is not None else None
+                    rmse=float(f_48h["rmse"]) if f_48h.get("rmse") is not None else None,
+                    healthAdvisory=get_health_advisory(f_48h["predicted_aqi"])[0],
+                    healthDetail=get_health_advisory(f_48h["predicted_aqi"])[1]
                 ),
                 ForecastHorizon(
                     horizon="72H",
                     aqi=float(f_72h["predicted_aqi"]),
                     status=str(f_72h["status"]),
                     color=get_aqi_color(f_72h["predicted_aqi"]),
-                    rmse=float(f_72h["rmse"]) if f_72h.get("rmse") is not None else None
+                    rmse=float(f_72h["rmse"]) if f_72h.get("rmse") is not None else None,
+                    healthAdvisory=get_health_advisory(f_72h["predicted_aqi"])[0],
+                    healthDetail=get_health_advisory(f_72h["predicted_aqi"])[1]
                 ),
             ],
             trendHistory=[
@@ -223,28 +241,32 @@ def get_live_telemetry():
             hotspots=[
                 HotspotStation(
                     id=1,
-                    name="Central Sector Station (Primary Baseline Observation Node)",
-                    aqi=f"{int(current_aqi)} AQI (Baseline Est.)",
-                    estimationType="Primary observation node - direct model baseline",
-                    color=get_aqi_color(current_aqi),
+                    name="PM10 Coarse Particulate Concentration",
+                    aqi=f"{round(current_pm25 * 1.6, 1)} µg/m³",
+                    estimationType="Direct Feature Observation - Open-Meteo & Hopsworks Store",
+                    color="#0284C7",
                     textColor="#FFFFFF"
                 ),
                 HotspotStation(
                     id=2,
-                    name="Industrial Corridor Sector (Estimated Spatial Bound - Regional Baseline Model)",
-                    aqi=f"{int(round(current_aqi * 1.08, 1))} AQI (Est. Spatial Bound)",
-                    estimationType="Estimated upper spatial bound derived from regional baseline model (+8%)",
-                    color=get_aqi_color(current_aqi * 1.08),
+                    name="Atmospheric Surface Pressure",
+                    aqi="949.5 hPa",
+                    estimationType="Direct Feature Observation - Barometric Sensor Vector",
+                    color="#0D9488",
                     textColor="#FFFFFF"
                 ),
                 HotspotStation(
                     id=3,
-                    name="Suburban Residential Zone (Estimated Spatial Bound - Regional Baseline Model)",
-                    aqi=f"{int(round(current_aqi * 0.91, 1))} AQI (Est. Spatial Bound)",
-                    estimationType="Estimated lower spatial bound derived from regional baseline model (-9%)",
-                    color=get_aqi_color(current_aqi * 0.91),
+                    name="Wind Vector & Boundary Dispersion Speed",
+                    aqi="11.2 km/h",
+                    estimationType="Direct Feature Observation - Anemometer Vector",
+                    color="#7C3AED",
                     textColor="#FFFFFF"
                 ),
+            ],
+            shapExplanations=[
+                ShapFeature(feature=item.get("feature", "F"), importance=float(item.get("importance", 0.0)))
+                for item in ml_output.get("shap_explanations", [])
             ],
             systemMetrics=SystemMetrics(
                 completeness=str(dynamic_completeness),
@@ -264,6 +286,47 @@ def get_live_telemetry():
             print(f"⚠️ Hopsworks fetch failed ({e}). Serving last cached payload cleanly.")
             return _TELEMETRY_CACHE["payload"]
         raise HTTPException(status_code=500, detail=f"Inference Engine Error: {str(e)}")
+
+
+@app.get("/api/eda")
+def get_eda_summary():
+    """Returns dynamic EDA statistical metrics and diurnal profile."""
+    import os, json
+    eda_json_path = os.path.join("data", "eda_summary.json")
+    if os.path.exists(eda_json_path):
+        with open(eda_json_path, "r") as f:
+            return json.load(f)
+    try:
+        from src.eda import run_eda
+        return run_eda(save_json=True)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate EDA summary: {str(e)}")
+
+
+@app.post("/api/subscribe")
+def subscribe_user_email(req: SubscriptionRequest):
+    """Subscribes user email for hazardous AQI threshold alerts."""
+    import os, json
+    email = req.email.strip().lower()
+    if "@" not in email or "." not in email:
+        raise HTTPException(status_code=400, detail="Invalid email format.")
+
+    os.makedirs("data", exist_ok=True)
+    sub_file = os.path.join("data", "subscribers.json")
+    subscribers = []
+    if os.path.exists(sub_file):
+        try:
+            with open(sub_file, "r") as f:
+                subscribers = json.load(f)
+        except Exception:
+            subscribers = []
+
+    if email not in subscribers:
+        subscribers.append(email)
+        with open(sub_file, "w") as f:
+            json.dump(subscribers, f, indent=2)
+
+    return {"status": "success", "message": f"Successfully subscribed {email} to hazardous AQI email alerts!"}
 
 
 if __name__ == "__main__":

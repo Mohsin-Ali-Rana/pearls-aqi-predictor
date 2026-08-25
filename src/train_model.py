@@ -198,8 +198,31 @@ def train_evaluate_and_register_best_model():
     }
 
     # ----------------------------------------------------
-    # 6. Model Promotion Gate & Registry Serving
+    # 6. Model Promotion Gate, SHAP Explainability & Registry Serving
     # ----------------------------------------------------
+    print("\n--- Computing SHAP Global Feature Importance ---")
+    import shap
+    def compute_shap_feature_importance(model, X_df, feature_cols):
+        try:
+            explainer = shap.TreeExplainer(model)
+            shap_values = explainer.shap_values(X_df)
+            if isinstance(shap_values, list):
+                shap_values = shap_values[0]
+            mean_abs_shap = np.abs(shap_values).mean(axis=0)
+            importance_dict = dict(zip(feature_cols, mean_abs_shap.tolist()))
+            sorted_imp = sorted(importance_dict.items(), key=lambda x: x[1], reverse=True)
+            return [{"feature": feat, "importance": round(float(val), 4)} for feat, val in sorted_imp]
+        except Exception as e:
+            print(f"SHAP TreeExplainer note: {e}. Using model feature_importances_ fallback.")
+            if hasattr(model, "feature_importances_"):
+                imp = model.feature_importances_
+                sorted_imp = sorted(zip(feature_cols, imp), key=lambda x: x[1], reverse=True)
+                return [{"feature": feat, "importance": round(float(val), 4)} for feat, val in sorted_imp]
+            return []
+
+    shap_importance_24h = compute_shap_feature_importance(model_day1, X_train, feature_cols)
+    print(f"Top 5 SHAP Features (Day 1 Model): {shap_importance_24h[:5]}")
+
     print("\n--- Automated Model Promotion Gate ---")
     mr = project.get_model_registry()
     
@@ -214,11 +237,12 @@ def train_evaluate_and_register_best_model():
         "feature_cols": feature_cols,
         "day1_winner": winner_d1_name,
         "day2_winner": winner_d2_name,
-        "day3_winner": winner_d3_name
+        "day3_winner": winner_d3_name,
+        "shap_importance_24h": shap_importance_24h
     }
     
     joblib.dump(multi_model_bundle, os.path.join(model_dir, "model.pkl"))
-    print("Successfully packaged 3 Direct Models into model.pkl artifact.")
+    print("Successfully packaged 3 Direct Models + SHAP Feature Importance into model.pkl artifact.")
 
     # Register under 'aqi_pm25_predictor' registry
     reg_name = "aqi_pm25_predictor"

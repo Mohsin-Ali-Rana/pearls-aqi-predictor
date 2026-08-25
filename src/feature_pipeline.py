@@ -66,12 +66,12 @@ def generate_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 def run_feature_pipeline():
-    print("Fetching raw dataset dynamically up to current UTC date...")
+    print("Fetching raw dataset for recent window (14 days) to update Feature Store...")
     
-    # Fetch historical data up to today's current UTC date to prevent staleness
+    # Fetch recent historical window (14 days) to calculate lag & rolling features efficiently
     today_utc = datetime.now(timezone.utc)
     today_str = today_utc.strftime("%Y-%m-%d")
-    start_str = (today_utc - timedelta(days=730)).strftime("%Y-%m-%d")
+    start_str = (today_utc - timedelta(days=14)).strftime("%Y-%m-%d")
     
     raw_df = fetch_historical_aqi(LOCATION_LATITUDE, LOCATION_LONGITUDE, start_str, today_str)
     
