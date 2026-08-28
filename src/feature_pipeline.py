@@ -41,6 +41,10 @@ def generate_features(df: pd.DataFrame) -> pd.DataFrame:
     # ----------------------------------------------------
     # 2. Lag Features (Historical Memory)
     # ----------------------------------------------------
+    df['pm2_5_lag_2h'] = df['pm2_5'].shift(2)
+    df['pm2_5_lag_6h'] = df['pm2_5'].shift(6)
+    df['pm2_5_lag_12h'] = df['pm2_5'].shift(12)
+
     for col in ['pm10', 'pm2_5', 'european_aqi']:
         df[f'{col}_lag_1h'] = df[col].shift(1)
         df[f'{col}_lag_3h'] = df[col].shift(3)
@@ -49,6 +53,8 @@ def generate_features(df: pd.DataFrame) -> pd.DataFrame:
     # ----------------------------------------------------
     # 3. Rolling Window Statistics (Trend Smoothing)
     # ----------------------------------------------------
+    df['pm2_5_rolling_24h_std'] = df['pm2_5'].shift(1).rolling(window=24).std().fillna(0.0)
+
     for col in ['pm10', 'pm2_5']:
         df[f'{col}_rolling_6h_mean'] = df[col].shift(1).rolling(window=6).mean()
         df[f'{col}_rolling_24h_mean'] = df[col].shift(1).rolling(window=24).mean()

@@ -12,12 +12,18 @@ except ImportError:
     from src.config import HOPSWORKS_API_KEY, HOPSWORKS_PROJECT, HOPSWORKS_HOST, HOPSWORKS_PORT
     from src.utils import convert_pm25_to_aqi, get_aqi_status
 
-def run_inference():
+_MODEL_BUNDLE_CACHE = {
+    "bundle": None,
+    "model_meta": None
+}
+
+def run_inference(force_model_reload: bool = False):
     """
-    Connects to Hopsworks, downloads the registered 3 Direct Models bundle (v21+),
-    pulls real-time feature streams, and calculates 3-day direct multi-horizon predictions
-    without any recursive autoregressive feedback loops.
+    Connects to Hopsworks, loads/caches the 3 Direct Models bundle (v21+),
+    pulls real-time feature streams, and calculates 3-day direct multi-horizon predictions.
     """
+    global _MODEL_BUNDLE_CACHE
+    
     print("Connecting to Hopsworks Feature Store & Registry...")
     project = hopsworks.login(
         project=HOPSWORKS_PROJECT,
@@ -26,36 +32,44 @@ def run_inference():
         api_key_value=HOPSWORKS_API_KEY
     )
 
-    mr = project.get_model_registry()
-    print("Fetching latest promoted 3 Direct Models bundle...")
-    
-    models = mr.get_models("aqi_pm25_predictor")
-    if not models:
-        raise ValueError("No registered models found in Hopsworks Model Registry under 'aqi_pm25_predictor'.")
+    if not force_model_reload and _MODEL_BUNDLE_CACHE["bundle"] is not None:
+        print("⚡ Using cached model bundle (Fast Load).")
+        model_bundle = _MODEL_BUNDLE_CACHE["bundle"]
+        model_meta = _MODEL_BUNDLE_CACHE["model_meta"]
+    else:
+        mr = project.get_model_registry()
+        print("Fetching latest promoted 3 Direct Models bundle...")
+        
+        models = mr.get_models("aqi_pm25_predictor")
+        if not models:
+            raise ValueError("No registered models found in Hopsworks Model Registry under 'aqi_pm25_predictor'.")
 
-    # Pick the latest promoted version (v21+)
-    model_meta = max(models, key=lambda m: int(m.version))
-    print(f"Loaded Model Registry Version: {model_meta.version} (Model Name: {model_meta.name})")
-    
-    # Download artifact from Model Registry
-    model_dir = model_meta.download()
-    
-    model_metrics = model_meta.training_metrics or {}
-    
-    # Strict validation of 3 Direct Models bundle artifact
-    model_pkl_path = os.path.join(model_dir, "model.pkl")
-    if not os.path.exists(model_pkl_path):
-        raise FileNotFoundError(f"Promoted 3 Direct Models artifact 'model.pkl' not found in downloaded directory {model_dir}")
+        # Pick the latest promoted version (v21+)
+        model_meta = max(models, key=lambda m: int(m.version))
+        print(f"Loaded Model Registry Version: {model_meta.version} (Model Name: {model_meta.name})")
+        
+        # Download artifact from Model Registry
+        model_dir = model_meta.download()
+        
+        # Strict validation of 3 Direct Models bundle artifact
+        model_pkl_path = os.path.join(model_dir, "model.pkl")
+        if not os.path.exists(model_pkl_path):
+            raise FileNotFoundError(f"Promoted 3 Direct Models artifact 'model.pkl' not found in downloaded directory {model_dir}")
 
-    model_bundle = joblib.load(model_pkl_path)
-    if not isinstance(model_bundle, dict) or "model_24h" not in model_bundle:
-        raise ValueError(f"Loaded model artifact from Version {model_meta.version} is not a valid 3-Direct-Models bundle dictionary!")
+        model_bundle = joblib.load(model_pkl_path)
+        if not isinstance(model_bundle, dict) or "model_24h" not in model_bundle:
+            raise ValueError(f"Loaded model artifact from Version {model_meta.version} is not a valid 3-Direct-Models bundle dictionary!")
 
+        _MODEL_BUNDLE_CACHE["bundle"] = model_bundle
+        _MODEL_BUNDLE_CACHE["model_meta"] = model_meta
+
+    model_metrics = getattr(model_meta, "training_metrics", {}) or {}
     model_24h = model_bundle["model_24h"]
     model_48h = model_bundle["model_48h"]
     model_72h = model_bundle["model_72h"]
     
     print(f"✅ Successfully loaded 3 Direct Models bundle (Winners: 24h={model_bundle.get('day1_winner')}, 48h={model_bundle.get('day2_winner')}, 72h={model_bundle.get('day3_winner')}).")
+
 
     # ----------------------------------------------------
     # 2. Pull Fresh Feature State X_t0 at t=0

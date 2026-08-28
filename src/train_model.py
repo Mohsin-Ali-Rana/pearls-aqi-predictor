@@ -7,6 +7,8 @@ import xgboost as xgb
 import lightgbm as lgb
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import Ridge
+from sklearn.pipeline import make_pipeline
+from sklearn.impute import SimpleImputer
 from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
 import joblib
 
@@ -120,7 +122,7 @@ def train_evaluate_and_register_best_model():
             "XGBoost": xgb.XGBRegressor(n_estimators=150, learning_rate=0.05, max_depth=5, random_state=42),
             "LightGBM": lgb.LGBMRegressor(n_estimators=150, learning_rate=0.05, max_depth=5, random_state=42, verbose=-1),
             "RandomForest": RandomForestRegressor(n_estimators=100, max_depth=8, random_state=42),
-            "Ridge": Ridge(alpha=1.0)
+            "Ridge": make_pipeline(SimpleImputer(strategy="median"), Ridge(alpha=1.0))
         }
 
     # --- Day 1 (24h) Tournament ---
@@ -201,9 +203,9 @@ def train_evaluate_and_register_best_model():
     # 6. Model Promotion Gate, SHAP Explainability & Registry Serving
     # ----------------------------------------------------
     print("\n--- Computing SHAP Global Feature Importance ---")
-    import shap
     def compute_shap_feature_importance(model, X_df, feature_cols):
         try:
+            import shap
             explainer = shap.TreeExplainer(model)
             shap_values = explainer.shap_values(X_df)
             if isinstance(shap_values, list):

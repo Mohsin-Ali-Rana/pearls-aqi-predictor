@@ -114,178 +114,179 @@ def get_health_advisory(aqi_val: float) -> tuple[str, str]:
     return "Unhealthy Air Quality", "Everyone may begin to experience health effects; members of sensitive groups may experience more serious health effects."
 
 
+import asyncio
+
+def compute_telemetry_response() -> TelemetryResponse:
+    """Executes model inference and constructs TelemetryResponse payload."""
+    ml_output = run_inference()
+
+    tactical = ml_output.get("hourly_tactical", [])
+    strategic = ml_output.get("strategic_3_day", {})
+
+    if not tactical:
+        raise ValueError("Inference engine returned an empty tactical forecast.")
+
+    for horizon_key in ("24h", "48h", "72h"):
+        if horizon_key not in strategic:
+            raise ValueError(f"Inference engine did not return a '{horizon_key}' forecast.")
+
+    dynamic_confidence = int(round(float(ml_output.get("forecast_confidence", 94))))
+    p_metrics = ml_output.get("pipeline_metrics", {})
+    dynamic_completeness = p_metrics.get("completeness", "N/A")
+    dynamic_accuracy = p_metrics.get("sensor_accuracy", "N/A")
+
+    current_pm25 = float(tactical[0]["predicted_pm2_5"])
+    current_aqi = round(convert_pm25_to_aqi(current_pm25), 1)
+
+    advisory_title, advisory_detail = get_health_advisory(current_aqi)
+
+    f_24h = strategic["24h"]
+    f_48h = strategic["48h"]
+    f_72h = strategic["72h"]
+
+    if len(tactical) < 3:
+        raise ValueError("Inference engine returned insufficient tactical predictions.")
+
+    is_stale = ml_output.get("data_freshness_warning", False)
+    feature_store_status = "Stale" if is_stale else "Connected"
+
+    return TelemetryResponse(
+        city="Islamabad Capital Territory",
+        stationName="Primary Sector Station",
+        currentAQI=float(current_aqi),
+        aqiStatus=get_aqi_status(current_aqi),
+        aqiColor=get_aqi_color(current_aqi),
+        aqiDelta="▼ Dynamic Stream Active",
+        pm25=float(current_pm25),
+        whoStatus="WHO Threshold Evaluated",
+        healthAdvisory=advisory_title,
+        healthDetail=advisory_detail,
+        confidenceScore=dynamic_confidence,
+        modelName=f"{ml_output.get('model_name', 'aqi_pm25_predictor')} v{ml_output.get('model_version', 20)}",
+        featureStoreStatus=feature_store_status,
+        forecasts=[
+            ForecastHorizon(
+                horizon="24H",
+                aqi=float(f_24h["predicted_aqi"]),
+                status=str(f_24h["status"]),
+                color=get_aqi_color(f_24h["predicted_aqi"]),
+                rmse=float(f_24h["rmse"]) if f_24h.get("rmse") is not None else None,
+                healthAdvisory=get_health_advisory(f_24h["predicted_aqi"])[0],
+                healthDetail=get_health_advisory(f_24h["predicted_aqi"])[1]
+            ),
+            ForecastHorizon(
+                horizon="48H",
+                aqi=float(f_48h["predicted_aqi"]),
+                status=str(f_48h["status"]),
+                color=get_aqi_color(f_48h["predicted_aqi"]),
+                rmse=float(f_48h["rmse"]) if f_48h.get("rmse") is not None else None,
+                healthAdvisory=get_health_advisory(f_48h["predicted_aqi"])[0],
+                healthDetail=get_health_advisory(f_48h["predicted_aqi"])[1]
+            ),
+            ForecastHorizon(
+                horizon="72H",
+                aqi=float(f_72h["predicted_aqi"]),
+                status=str(f_72h["status"]),
+                color=get_aqi_color(f_72h["predicted_aqi"]),
+                rmse=float(f_72h["rmse"]) if f_72h.get("rmse") is not None else None,
+                healthAdvisory=get_health_advisory(f_72h["predicted_aqi"])[0],
+                healthDetail=get_health_advisory(f_72h["predicted_aqi"])[1]
+            ),
+        ],
+        trendHistory=[
+            TrendPoint(
+                time="+1h",
+                aqi=float(round(convert_pm25_to_aqi(tactical[0]["predicted_pm2_5"]), 1)),
+                pm25=float(tactical[0]["predicted_pm2_5"])
+            ),
+            TrendPoint(
+                time="+2h",
+                aqi=float(round(convert_pm25_to_aqi(tactical[1]["predicted_pm2_5"]), 1)),
+                pm25=float(tactical[1]["predicted_pm2_5"])
+            ),
+            TrendPoint(
+                time="+3h",
+                aqi=float(round(convert_pm25_to_aqi(tactical[2]["predicted_pm2_5"]), 1)),
+                pm25=float(tactical[2]["predicted_pm2_5"])
+            ),
+            TrendPoint(time="24H Avg", aqi=float(f_24h["predicted_aqi"]), pm25=float(f_24h["predicted_pm2_5"])),
+            TrendPoint(time="48H Avg", aqi=float(f_48h["predicted_aqi"]), pm25=float(f_48h["predicted_pm2_5"])),
+            TrendPoint(time="72H Avg", aqi=float(f_72h["predicted_aqi"]), pm25=float(f_72h["predicted_pm2_5"])),
+        ],
+        hotspots=[
+            HotspotStation(
+                id=1,
+                name="PM10 Coarse Particulate Concentration",
+                aqi=f"{round(current_pm25 * 1.6, 1)} µg/m³",
+                estimationType="Direct Feature Observation - Open-Meteo & Hopsworks Store",
+                color="#0284C7",
+                textColor="#FFFFFF"
+            ),
+            HotspotStation(
+                id=2,
+                name="Atmospheric Surface Pressure",
+                aqi="949.5 hPa",
+                estimationType="Direct Feature Observation - Barometric Sensor Vector",
+                color="#0D9488",
+                textColor="#FFFFFF"
+            ),
+            HotspotStation(
+                id=3,
+                name="Wind Vector & Boundary Dispersion Speed",
+                aqi="11.2 km/h",
+                estimationType="Direct Feature Observation - Anemometer Vector",
+                color="#7C3AED",
+                textColor="#FFFFFF"
+            ),
+        ],
+        shapExplanations=[
+            ShapFeature(feature=item.get("feature", "F"), importance=float(item.get("importance", 0.0)))
+            for item in ml_output.get("shap_explanations", [])
+        ],
+        systemMetrics=SystemMetrics(
+            completeness=str(dynamic_completeness),
+            accuracy=str(dynamic_accuracy),
+            status="System Status: Operational | Hopsworks Synchronized"
+        )
+    )
+
+async def _background_telemetry_worker():
+    """Asynchronous background task that periodically refreshes Hopsworks stream telemetry."""
+    while True:
+        try:
+            print("🔄 [Background Worker] Refreshing Hopsworks feature stream & inference payload...")
+            response = await asyncio.to_thread(compute_telemetry_response)
+            _TELEMETRY_CACHE["payload"] = response
+            _TELEMETRY_CACHE["timestamp"] = time.time()
+            print("⚡ [Background Worker] Telemetry payload updated successfully!")
+        except Exception as e:
+            print(f"⚠️ [Background Worker] Refresh note: {e}")
+        await asyncio.sleep(300)  # Refresh every 5 minutes
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Starts the background telemetry refresher thread on FastAPI boot."""
+    asyncio.create_task(_background_telemetry_worker())
+
+
 @app.get("/api/telemetry", response_model=TelemetryResponse)
 def get_live_telemetry():
     """
     Main endpoint called by the React frontend.
-    Executes inference engine with high-availability TTL caching.
+    Returns instantly from cached memory (0-10ms latency).
     """
-    now = time.time()
-    # 1. Serve cached response instantly if TTL is valid (0ms latency)
-    if _TELEMETRY_CACHE["payload"] is not None and (now - _TELEMETRY_CACHE["timestamp"]) < CACHE_TTL_SECONDS:
+    if _TELEMETRY_CACHE["payload"] is not None:
         return _TELEMETRY_CACHE["payload"]
 
     try:
-        # 2. Run inference script dynamically
-        ml_output = run_inference()
-
-        # Extract values calculated by model logic
-        tactical = ml_output.get("hourly_tactical", [])
-        strategic = ml_output.get("strategic_3_day", {})
-
-        # Guard: if tactical list is empty
-        if not tactical:
-            raise HTTPException(
-                status_code=503,
-                detail="Inference engine returned an empty tactical forecast."
-            )
-
-        # Guard: if any horizon is missing from strategic output
-        for horizon_key in ("24h", "48h", "72h"):
-            if horizon_key not in strategic:
-                raise HTTPException(
-                    status_code=503,
-                    detail=f"Inference engine did not return a '{horizon_key}' forecast."
-                )
-
-        # Dynamically extract confidence and pipeline metrics
-        dynamic_confidence = int(round(float(ml_output.get("forecast_confidence", 94))))
-        p_metrics = ml_output.get("pipeline_metrics", {})
-        dynamic_completeness = p_metrics.get("completeness", "N/A")
-        dynamic_accuracy = p_metrics.get("sensor_accuracy", "N/A")
-
-        current_pm25 = float(tactical[0]["predicted_pm2_5"])
-
-        # EPA PM2.5 to AQI conversion for current hour
-        current_aqi = round(convert_pm25_to_aqi(current_pm25), 1)
-
-        advisory_title, advisory_detail = get_health_advisory(current_aqi)
-
-        # Extract multi-horizon 24h, 48h, 72h strategic forecasts
-        f_24h = strategic["24h"]
-        f_48h = strategic["48h"]
-        f_72h = strategic["72h"]
-
-        if len(tactical) < 3:
-            raise HTTPException(
-                status_code=503,
-                detail="Inference engine returned insufficient tactical predictions."
-            )
-
-        is_stale = ml_output.get("data_freshness_warning", False)
-        feature_store_status = "Stale" if is_stale else "Connected"
-
-        response = TelemetryResponse(
-            city="Islamabad Capital Territory",
-            stationName="Primary Sector Station",
-            currentAQI=float(current_aqi),
-            aqiStatus=get_aqi_status(current_aqi),
-            aqiColor=get_aqi_color(current_aqi),
-            aqiDelta="▼ Dynamic Stream Active",
-            pm25=float(current_pm25),
-            whoStatus="WHO Threshold Evaluated",
-            healthAdvisory=advisory_title,
-            healthDetail=advisory_detail,
-            confidenceScore=dynamic_confidence,
-            modelName=f"{ml_output.get('model_name', 'aqi_pm25_predictor')} v{ml_output.get('model_version', 20)}",
-            featureStoreStatus=feature_store_status,
-            forecasts=[
-                ForecastHorizon(
-                    horizon="24H",
-                    aqi=float(f_24h["predicted_aqi"]),
-                    status=str(f_24h["status"]),
-                    color=get_aqi_color(f_24h["predicted_aqi"]),
-                    rmse=float(f_24h["rmse"]) if f_24h.get("rmse") is not None else None,
-                    healthAdvisory=get_health_advisory(f_24h["predicted_aqi"])[0],
-                    healthDetail=get_health_advisory(f_24h["predicted_aqi"])[1]
-                ),
-                ForecastHorizon(
-                    horizon="48H",
-                    aqi=float(f_48h["predicted_aqi"]),
-                    status=str(f_48h["status"]),
-                    color=get_aqi_color(f_48h["predicted_aqi"]),
-                    rmse=float(f_48h["rmse"]) if f_48h.get("rmse") is not None else None,
-                    healthAdvisory=get_health_advisory(f_48h["predicted_aqi"])[0],
-                    healthDetail=get_health_advisory(f_48h["predicted_aqi"])[1]
-                ),
-                ForecastHorizon(
-                    horizon="72H",
-                    aqi=float(f_72h["predicted_aqi"]),
-                    status=str(f_72h["status"]),
-                    color=get_aqi_color(f_72h["predicted_aqi"]),
-                    rmse=float(f_72h["rmse"]) if f_72h.get("rmse") is not None else None,
-                    healthAdvisory=get_health_advisory(f_72h["predicted_aqi"])[0],
-                    healthDetail=get_health_advisory(f_72h["predicted_aqi"])[1]
-                ),
-            ],
-            trendHistory=[
-                TrendPoint(
-                    time="+1h",
-                    aqi=float(round(convert_pm25_to_aqi(tactical[0]["predicted_pm2_5"]), 1)),
-                    pm25=float(tactical[0]["predicted_pm2_5"])
-                ),
-                TrendPoint(
-                    time="+2h",
-                    aqi=float(round(convert_pm25_to_aqi(tactical[1]["predicted_pm2_5"]), 1)),
-                    pm25=float(tactical[1]["predicted_pm2_5"])
-                ),
-                TrendPoint(
-                    time="+3h",
-                    aqi=float(round(convert_pm25_to_aqi(tactical[2]["predicted_pm2_5"]), 1)),
-                    pm25=float(tactical[2]["predicted_pm2_5"])
-                ),
-                TrendPoint(time="24H Avg", aqi=float(f_24h["predicted_aqi"]), pm25=float(f_24h["predicted_pm2_5"])),
-                TrendPoint(time="48H Avg", aqi=float(f_48h["predicted_aqi"]), pm25=float(f_48h["predicted_pm2_5"])),
-                TrendPoint(time="72H Avg", aqi=float(f_72h["predicted_aqi"]), pm25=float(f_72h["predicted_pm2_5"])),
-            ],
-            hotspots=[
-                HotspotStation(
-                    id=1,
-                    name="PM10 Coarse Particulate Concentration",
-                    aqi=f"{round(current_pm25 * 1.6, 1)} µg/m³",
-                    estimationType="Direct Feature Observation - Open-Meteo & Hopsworks Store",
-                    color="#0284C7",
-                    textColor="#FFFFFF"
-                ),
-                HotspotStation(
-                    id=2,
-                    name="Atmospheric Surface Pressure",
-                    aqi="949.5 hPa",
-                    estimationType="Direct Feature Observation - Barometric Sensor Vector",
-                    color="#0D9488",
-                    textColor="#FFFFFF"
-                ),
-                HotspotStation(
-                    id=3,
-                    name="Wind Vector & Boundary Dispersion Speed",
-                    aqi="11.2 km/h",
-                    estimationType="Direct Feature Observation - Anemometer Vector",
-                    color="#7C3AED",
-                    textColor="#FFFFFF"
-                ),
-            ],
-            shapExplanations=[
-                ShapFeature(feature=item.get("feature", "F"), importance=float(item.get("importance", 0.0)))
-                for item in ml_output.get("shap_explanations", [])
-            ],
-            systemMetrics=SystemMetrics(
-                completeness=str(dynamic_completeness),
-                accuracy=str(dynamic_accuracy),
-                status="System Status: Operational | Hopsworks Synchronized"
-            )
-        )
-
-        # Cache successful telemetry response
+        response = compute_telemetry_response()
         _TELEMETRY_CACHE["payload"] = response
-        _TELEMETRY_CACHE["timestamp"] = now
+        _TELEMETRY_CACHE["timestamp"] = time.time()
         return response
-
     except Exception as e:
-        # Fallback to cached payload if Hopsworks API connection encounters temporary network error
-        if _TELEMETRY_CACHE["payload"] is not None:
-            print(f"⚠️ Hopsworks fetch failed ({e}). Serving last cached payload cleanly.")
-            return _TELEMETRY_CACHE["payload"]
         raise HTTPException(status_code=500, detail=f"Inference Engine Error: {str(e)}")
+
 
 
 @app.get("/api/eda")
