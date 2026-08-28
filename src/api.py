@@ -13,9 +13,13 @@ import uvicorn
 try:
     from src.inference import run_inference
     from src.utils import convert_pm25_to_aqi, get_aqi_status
+    from src.config import LOCATION_NAME, STATION_NAME
+    from src.alerts import dispatch_hazardous_aqi_alerts
 except ImportError:
     from inference import run_inference
     from utils import convert_pm25_to_aqi, get_aqi_status
+    from config import LOCATION_NAME, STATION_NAME
+    from alerts import dispatch_hazardous_aqi_alerts
 
 app = FastAPI(
     title="PEARLS AQI Predictor API",
@@ -151,8 +155,8 @@ def compute_telemetry_response() -> TelemetryResponse:
     feature_store_status = "Stale" if is_stale else "Connected"
 
     return TelemetryResponse(
-        city="Islamabad Capital Territory",
-        stationName="Primary Sector Station",
+        city=str(LOCATION_NAME),
+        stationName=str(STATION_NAME),
         currentAQI=float(current_aqi),
         aqiStatus=get_aqi_status(current_aqi),
         aqiColor=get_aqi_color(current_aqi),
@@ -214,30 +218,7 @@ def compute_telemetry_response() -> TelemetryResponse:
             TrendPoint(time="72H Avg", aqi=float(f_72h["predicted_aqi"]), pm25=float(f_72h["predicted_pm2_5"])),
         ],
         hotspots=[
-            HotspotStation(
-                id=1,
-                name="PM10 Coarse Particulate Concentration",
-                aqi=f"{round(current_pm25 * 1.6, 1)} µg/m³",
-                estimationType="Direct Feature Observation - Open-Meteo & Hopsworks Store",
-                color="#0284C7",
-                textColor="#FFFFFF"
-            ),
-            HotspotStation(
-                id=2,
-                name="Atmospheric Surface Pressure",
-                aqi="949.5 hPa",
-                estimationType="Direct Feature Observation - Barometric Sensor Vector",
-                color="#0D9488",
-                textColor="#FFFFFF"
-            ),
-            HotspotStation(
-                id=3,
-                name="Wind Vector & Boundary Dispersion Speed",
-                aqi="11.2 km/h",
-                estimationType="Direct Feature Observation - Anemometer Vector",
-                color="#7C3AED",
-                textColor="#FFFFFF"
-            ),
+            HotspotStation(**h) for h in ml_output.get("sensor_hotspots", [])
         ],
         shapExplanations=[
             ShapFeature(feature=item.get("feature", "F"), importance=float(item.get("importance", 0.0)))
@@ -251,7 +232,7 @@ def compute_telemetry_response() -> TelemetryResponse:
     )
 
 async def _background_telemetry_worker():
-    """Asynchronous background task that periodically refreshes Hopsworks stream telemetry."""
+    """Asynchronous background task that periodically refreshes Hopsworks stream telemetry and checks alerts."""
     while True:
         try:
             print("🔄 [Background Worker] Refreshing Hopsworks feature stream & inference payload...")
@@ -259,6 +240,16 @@ async def _background_telemetry_worker():
             _TELEMETRY_CACHE["payload"] = response
             _TELEMETRY_CACHE["timestamp"] = time.time()
             print("⚡ [Background Worker] Telemetry payload updated successfully!")
+
+            # Trigger automated email alert dispatcher
+            if response.forecasts and len(response.forecasts) > 0:
+                f24_aqi = response.forecasts[0].aqi
+                await asyncio.to_thread(
+                    dispatch_hazardous_aqi_alerts, 
+                    response.currentAQI, 
+                    f24_aqi, 
+                    response.aqiStatus
+                )
         except Exception as e:
             print(f"⚠️ [Background Worker] Refresh note: {e}")
         await asyncio.sleep(300)  # Refresh every 5 minutes

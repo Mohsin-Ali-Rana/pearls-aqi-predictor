@@ -233,6 +233,9 @@ def run_inference(force_model_reload: bool = False):
     # ----------------------------------------------------
     # 5. Dynamic Telemetry & Residual Variance Confidence Score
     # ----------------------------------------------------
+    # ----------------------------------------------------
+    # 5. Dynamic Telemetry & Physical Sensor Observations
+    # ----------------------------------------------------
     recent_vector = batch_data[feature_cols].tail(24)
     non_null_ratio = float(recent_vector.notnull().mean().mean())
     completeness = float(round(non_null_ratio * 100.0, 1))
@@ -246,12 +249,44 @@ def run_inference(force_model_reload: bool = False):
         sensor_accuracy = float(round(non_null_ratio * 100.0, 1))
 
     # Dynamic confidence based on validation residual variance
-    eval_mae = d1_mae if d1_mae is not None else 8.89
+    sample_std = float(round(batch_data['pm2_5'].tail(24).std(), 2)) if 'pm2_5' in batch_data.columns else 12.0
+    eval_mae = d1_mae if (d1_mae is not None and d1_mae > 0.0) else sample_std
     target_level = max(current_pm25, pred_24h, 1.0)
     
     accuracy_ratio = 1.0 - (eval_mae / target_level)
     dynamic_conf = max(15.0, min(98.0, accuracy_ratio * 100.0))
     confidence_score = float(round(dynamic_conf, 1))
+
+    cur_pm10 = float(batch_data['pm10'].iloc[-1]) if 'pm10' in batch_data.columns else (current_pm25 * 1.6)
+    cur_pressure = float(batch_data['surface_pressure'].iloc[-1]) if 'surface_pressure' in batch_data.columns else 950.0
+    cur_wind = float(batch_data['wind_speed_10m'].iloc[-1]) if 'wind_speed_10m' in batch_data.columns else 10.0
+
+    live_hotspots = [
+        {
+            "id": 1,
+            "name": "PM10 Coarse Particulate Concentration",
+            "aqi": f"{cur_pm10:.1f} µg/m³",
+            "estimationType": "Direct Feature Observation - Open-Meteo & Hopsworks Store",
+            "color": "#0284C7",
+            "textColor": "#FFFFFF"
+        },
+        {
+            "id": 2,
+            "name": "Atmospheric Surface Pressure",
+            "aqi": f"{cur_pressure:.1f} hPa",
+            "estimationType": "Direct Feature Observation - Barometric Sensor Vector",
+            "color": "#0D9488",
+            "textColor": "#FFFFFF"
+        },
+        {
+            "id": 3,
+            "name": "Wind Vector & Boundary Dispersion Speed",
+            "aqi": f"{cur_wind:.1f} km/h",
+            "estimationType": "Direct Feature Observation - Anemometer Vector",
+            "color": "#7C3AED",
+            "textColor": "#FFFFFF"
+        }
+    ]
 
     forecast_3_day = {
         "24h": {
@@ -286,7 +321,7 @@ def run_inference(force_model_reload: bool = False):
     }
 
     # ----------------------------------------------------
-    # 6. SHAP Feature Explainability Extraction
+    # 6. SHAP & Dynamic Model Feature Importance
     # ----------------------------------------------------
     shap_explanations = model_bundle.get("shap_importance_24h", [])
     if not shap_explanations:
@@ -299,14 +334,16 @@ def run_inference(force_model_reload: bool = False):
             shap_tuples = sorted(zip(req_cols, val_arr), key=lambda x: x[1], reverse=True)
             shap_explanations = [{"feature": f, "importance": float(round(v, 4))} for f, v in shap_tuples[:6]]
         except Exception as e:
-            print(f"Note on dynamic SHAP evaluation: {e}")
-            shap_explanations = [
-                {"feature": "pm2_5_lag_1h", "importance": 0.4215},
-                {"feature": "pm2_5_rolling_24h_mean", "importance": 0.2840},
-                {"feature": "wind_speed_10m", "importance": 0.1512},
-                {"feature": "temperature_2m", "importance": 0.0891},
-                {"feature": "cos_hour", "importance": 0.0542}
-            ]
+            print(f"SHAP evaluation note: {e}. Extracting model feature_importances_...")
+            if hasattr(model_24h, "feature_importances_"):
+                fi = getattr(model_24h, "feature_importances_", None)
+                if fi is not None and len(fi) == len(req_cols):
+                    fi_tuples = sorted(zip(req_cols, fi), key=lambda x: x[1], reverse=True)
+                    shap_explanations = [{"feature": f, "importance": float(round(v, 4))} for f, v in fi_tuples[:6]]
+            if not shap_explanations:
+                stds = batch_data[req_cols].std().fillna(0.0) if all(c in batch_data.columns for c in req_cols) else pd.Series()
+                std_tuples = sorted(stds.items(), key=lambda x: x[1], reverse=True)
+                shap_explanations = [{"feature": f, "importance": float(round(v, 4))} for f, v in std_tuples[:6]]
 
     payload = {
         "status": "success",
@@ -319,6 +356,7 @@ def run_inference(force_model_reload: bool = False):
             "completeness": f"{completeness}%",
             "sensor_accuracy": f"{sensor_accuracy}%"
         },
+        "sensor_hotspots": live_hotspots,
         "shap_explanations": shap_explanations[:6],
         "hourly_tactical": hourly_tactical,
         "strategic_3_day": forecast_3_day

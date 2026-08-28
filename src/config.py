@@ -16,10 +16,18 @@ HOPSWORKS_PROJECT = os.getenv("HOPSWORKS_PROJECT", "MA")
 HOPSWORKS_HOST = os.getenv("HOPSWORKS_HOST", "eu-west.cloud.hopsworks.ai")
 HOPSWORKS_PORT = int(os.getenv("HOPSWORKS_PORT", 443))
 
-# Geographical Coordinates for the Wah/Taxila region
+# Geographical Location & Station Metadata
 LOCATION_LATITUDE = 33.77
 LOCATION_LONGITUDE = 72.75
+LOCATION_NAME = os.getenv("LOCATION_NAME", "Wah Cantt / Taxila Region")
+STATION_NAME = os.getenv("STATION_NAME", "Central Atmospheric Observation Station")
 
 # Open-Meteo Air Quality API Endpoint
 OPEN_METEO_AQI_URL = "https://air-quality-api.open-meteo.com/v1/air-quality"
-# OPEN_METEO_AQI_URL = "https://archive-api.open-meteo.com/v1/archive"
+
+# SMTP Email Alert Credentials
+SMTP_HOST = os.getenv("SMTP_HOST", "")
+SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
+SMTP_USER = os.getenv("SMTP_USER", "")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+SMTP_SENDER = os.getenv("SMTP_SENDER", SMTP_USER)
