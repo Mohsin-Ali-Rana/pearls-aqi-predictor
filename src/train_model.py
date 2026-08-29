@@ -177,11 +177,18 @@ def train_evaluate_and_register_best_model():
     overall_mae  = float(np.mean([d1_m['mae'], d2_m['mae'], d3_m['mae']]))
     overall_r2   = float(np.mean([d1_m['r2'], d2_m['r2'], d3_m['r2']]))
 
+    # Mathematical percentage lift calculation against Naive Persistence:
+    # lift_pct = ((persistence_rmse - model_rmse) / persistence_rmse) * 100
+    d1_lift_rmse_pct = float(round(((p_d1_m["rmse"] - d1_m["rmse"]) / p_d1_m["rmse"]) * 100.0, 2))
+    d2_lift_rmse_pct = float(round(((p_d2_m["rmse"] - d2_m["rmse"]) / p_d2_m["rmse"]) * 100.0, 2))
+    d3_lift_rmse_pct = float(round(((p_d3_m["rmse"] - d3_m["rmse"]) / p_d3_m["rmse"]) * 100.0, 2))
+    overall_lift_rmse_pct = float(round(((persistence_rmse - overall_rmse) / persistence_rmse) * 100.0, 2))
+
     print("\n--- Final Direct Multi-Horizon Summary ---")
-    print(f"  Day 1 (24h) [{winner_d1_name:10s}] -> RMSE: {d1_m['rmse']:.4f} | MAE: {d1_m['mae']:.4f} | R2: {d1_m['r2']:.4f}")
-    print(f"  Day 2 (48h) [{winner_d2_name:10s}] -> RMSE: {d2_m['rmse']:.4f} | MAE: {d2_m['mae']:.4f} | R2: {d2_m['r2']:.4f}")
-    print(f"  Day 3 (72h) [{winner_d3_name:10s}] -> RMSE: {d3_m['rmse']:.4f} | MAE: {d3_m['mae']:.4f} | R2: {d3_m['r2']:.4f}")
-    print(f"  Overall 72H Direct Average -> RMSE: {overall_rmse:.4f} | MAE: {overall_mae:.4f} | R2: {overall_r2:.4f}")
+    print(f"  Day 1 (24h) [{winner_d1_name:10s}] -> RMSE: {d1_m['rmse']:.4f} | MAE: {d1_m['mae']:.4f} | R2: {d1_m['r2']:.4f} | Persistence Lift: +{d1_lift_rmse_pct:.2f}%")
+    print(f"  Day 2 (48h) [{winner_d2_name:10s}] -> RMSE: {d2_m['rmse']:.4f} | MAE: {d2_m['mae']:.4f} | R2: {d2_m['r2']:.4f} | Persistence Lift: +{d2_lift_rmse_pct:.2f}%")
+    print(f"  Day 3 (72h) [{winner_d3_name:10s}] -> RMSE: {d3_m['rmse']:.4f} | MAE: {d3_m['mae']:.4f} | R2: {d3_m['r2']:.4f} | Persistence Lift: +{d3_lift_rmse_pct:.2f}%")
+    print(f"  Overall 72H Direct Average -> RMSE: {overall_rmse:.4f} | MAE: {overall_mae:.4f} | R2: {overall_r2:.4f} | Overall Lift: +{overall_lift_rmse_pct:.2f}%")
 
     # Hopsworks metadata ONLY allows numbers (floats/ints) - no strings!
     best_metrics = {
@@ -191,6 +198,10 @@ def train_evaluate_and_register_best_model():
         "day1_rmse": float(d1_m["rmse"]), "day1_mae": float(d1_m["mae"]), "day1_r2": float(d1_m["r2"]),
         "day2_rmse": float(d2_m["rmse"]), "day2_mae": float(d2_m["mae"]), "day2_r2": float(d2_m["r2"]),
         "day3_rmse": float(d3_m["rmse"]), "day3_mae": float(d3_m["mae"]), "day3_r2": float(d3_m["r2"]),
+        "day1_lift_rmse_pct": d1_lift_rmse_pct,
+        "day2_lift_rmse_pct": d2_lift_rmse_pct,
+        "day3_lift_rmse_pct": d3_lift_rmse_pct,
+        "overall_lift_rmse_pct": overall_lift_rmse_pct,
         "overall_72h_rmse": overall_rmse,
         "overall_72h_mae":  overall_mae,
         "overall_72h_r2":   overall_r2,
@@ -246,8 +257,37 @@ def train_evaluate_and_register_best_model():
     joblib.dump(multi_model_bundle, os.path.join(model_dir, "model.pkl"))
     print("Successfully packaged 3 Direct Models + SHAP Feature Importance into model.pkl artifact.")
 
-    # Register under 'aqi_pm25_predictor' registry
+    # ----------------------------------------------------
+    # Model Promotion Gate Implementation
+    # ----------------------------------------------------
     reg_name = "aqi_pm25_predictor"
+    candidate_rmse = overall_rmse
+    should_promote = True
+
+    try:
+        existing_models = mr.get_models(reg_name)
+        if existing_models:
+            # Retrieve latest active version from Hopsworks Model Registry
+            latest_model = max(existing_models, key=lambda m: getattr(m, "version", 0))
+            metrics_dict = getattr(latest_model, "training_metrics", {}) or {}
+            active_rmse_val = metrics_dict.get("rmse")
+            if active_rmse_val is not None:
+                active_rmse = float(active_rmse_val)
+                if candidate_rmse >= active_rmse:
+                    should_promote = False
+                    print(f"[PROMOTION GATE] REJECTED: Candidate model (RMSE: {candidate_rmse:.4f}) did not beat active model (RMSE: {active_rmse:.4f}). Active version retained.")
+                else:
+                    print(f"[PROMOTION GATE] PASSED: New model beats active production model (Candidate RMSE: {candidate_rmse:.4f} < Active RMSE: {active_rmse:.4f}). Promoting version.")
+            else:
+                print(f"[PROMOTION GATE] PASSED: Existing model version exists but lacks recorded RMSE metric. Promoting version (Candidate RMSE: {candidate_rmse:.4f}).")
+        else:
+            print(f"[PROMOTION GATE] PASSED: No previous model versions exist in registry. Promoting initial version (Candidate RMSE: {candidate_rmse:.4f}).")
+    except Exception as e:
+        print(f"[PROMOTION GATE] PASSED: Registry query note ({e}). Promoting candidate version (Candidate RMSE: {candidate_rmse:.4f}).")
+
+    if not should_promote:
+        return
+
     print(f"Uploading promoted 3 Direct Models bundle to Hopsworks Model Registry ('{reg_name}')...")
     hopsworks_model = mr.python.create_model(
         name=reg_name,

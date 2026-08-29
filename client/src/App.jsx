@@ -2,10 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Activity, ShieldAlert, RefreshCw, MapPin, CheckCircle2, 
-  Layers, Cpu, BarChart3, Globe, Database, Settings, LayoutDashboard, Search, Bell,
-  Sparkles, Mail, Send, LineChart, PieChart, Info, ArrowUpRight, TrendingUp,
-  AlertTriangle, Wind, Thermometer, Droplets, ChevronRight, Zap, Check, HelpCircle,
-  Clock, Award, Server, ArrowDownRight, Eye
+  Layers, Globe, LayoutDashboard, Sparkles, Mail, Send, LineChart, TrendingUp, ChevronRight
 } from 'lucide-react';
 import { 
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, 
@@ -287,7 +284,7 @@ export default function App() {
               gap: '0.5rem' 
             }}>
               <MapPin size={15} color="#0284C7" />
-              <span>Islamabad | 33.72° N, 72.75° E</span>
+              <span>{telemetry?.city || 'Loading location...'} | {telemetry?.coordinates || 'Active Station'}</span>
             </div>
 
             <motion.button 
@@ -787,18 +784,22 @@ export default function App() {
                 </h3>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.25rem' }}>
-                  {[
-                    { title: "PM10 Particulate Mass", status: "Active", val: "48.2 µg/m³", desc: "Direct feature observation vector" },
-                    { title: "Surface Atmospheric Pressure", status: "Active", val: "949.5 hPa", desc: "Barometric sensor observation" },
-                    { title: "Wind Dispersion Vector", status: "Active", val: "11.2 km/h", desc: "10m anemometer observation" }
-                  ].map((node, i) => (
-                    <div key={i} style={{ backgroundColor: '#F8FAFC', padding: '1.25rem', borderRadius: '1rem', border: '1px solid #E2E8F0' }}>
-                      <div style={{ fontSize: '0.8rem', fontWeight: '800', color: '#0284C7' }}>FEATURE VECTOR 0{i+1}</div>
-                      <div style={{ fontSize: '1.1rem', fontWeight: '800', color: '#0F172A', margin: '0.3rem 0' }}>{node.title}</div>
-                      <div style={{ fontSize: '1.75rem', fontWeight: '900', color: '#0284C7', margin: '0.3rem 0' }}>{node.val}</div>
-                      <div style={{ fontSize: '0.75rem', color: '#64748B' }}>{node.desc}</div>
+                  {isLoading ? (
+                    [1, 2, 3].map(i => <div key={i} style={{ height: '140px' }} className="skeleton-shimmer"></div>)
+                  ) : (telemetry?.hotspots && telemetry.hotspots.length > 0) ? (
+                    telemetry.hotspots.map((spot, i) => (
+                      <div key={spot.id || i} style={{ backgroundColor: '#F8FAFC', padding: '1.25rem', borderRadius: '1rem', border: '1px solid #E2E8F0' }}>
+                        <div style={{ fontSize: '0.8rem', fontWeight: '800', color: spot.color || '#0284C7' }}>SENSING STATION 0{i+1}</div>
+                        <div style={{ fontSize: '1.1rem', fontWeight: '800', color: '#0F172A', margin: '0.3rem 0' }}>{spot.name}</div>
+                        <div style={{ fontSize: '1.75rem', fontWeight: '900', color: spot.color || '#0284C7', margin: '0.3rem 0' }}>{spot.aqi}</div>
+                        <div style={{ fontSize: '0.75rem', color: '#64748B' }}>{spot.estimationType}</div>
+                      </div>
+                    ))
+                  ) : (
+                    <div style={{ fontSize: '0.85rem', color: '#64748B', fontStyle: 'italic', gridColumn: 'span 3', padding: '1rem' }}>
+                      Connecting to live Hopsworks Feature Store stream...
                     </div>
-                  ))}
+                  )}
                 </div>
               </div>
             </motion.div>

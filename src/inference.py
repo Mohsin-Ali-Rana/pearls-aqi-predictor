@@ -1,5 +1,4 @@
 import os
-import re
 from datetime import datetime, timezone
 import hopsworks
 import pandas as pd

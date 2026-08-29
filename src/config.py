@@ -7,10 +7,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 env_path = BASE_DIR / ".env"
 load_dotenv(dotenv_path=env_path)
 
-# Hopsworks Credentials & Configuration
-HOPSWORKS_API_KEY = os.getenv("HOPSWORKS_API_KEY")
-if not HOPSWORKS_API_KEY:
-    raise EnvironmentError("HOPSWORKS_API_KEY is not configured in .env or system environment.")
+HOPSWORKS_API_KEY = os.getenv("HOPSWORKS_API_KEY", "")
+
+def validate_credentials():
+    if not HOPSWORKS_API_KEY:
+        raise EnvironmentError("HOPSWORKS_API_KEY is not configured in .env or system environment.")
+    return True
 
 HOPSWORKS_PROJECT = os.getenv("HOPSWORKS_PROJECT", "MA")
 HOPSWORKS_HOST = os.getenv("HOPSWORKS_HOST", "eu-west.cloud.hopsworks.ai")

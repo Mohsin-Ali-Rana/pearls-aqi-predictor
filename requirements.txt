@@ -7,6 +7,5 @@ lightgbm
 scikit-learn
 joblib
 pyarrow
-confluent-kafka
 python-dotenv
 shap

@@ -13,12 +13,12 @@ import uvicorn
 try:
     from src.inference import run_inference
     from src.utils import convert_pm25_to_aqi, get_aqi_status
-    from src.config import LOCATION_NAME, STATION_NAME
+    from src.config import LOCATION_NAME, STATION_NAME, LOCATION_LATITUDE, LOCATION_LONGITUDE
     from src.alerts import dispatch_hazardous_aqi_alerts
 except ImportError:
     from inference import run_inference
     from utils import convert_pm25_to_aqi, get_aqi_status
-    from config import LOCATION_NAME, STATION_NAME
+    from config import LOCATION_NAME, STATION_NAME, LOCATION_LATITUDE, LOCATION_LONGITUDE
     from alerts import dispatch_hazardous_aqi_alerts
 
 app = FastAPI(
@@ -77,6 +77,7 @@ class SystemMetrics(BaseModel):
 
 class TelemetryResponse(BaseModel):
     city: str
+    coordinates: str = "33.77° N, 72.75° E"
     stationName: str
     currentAQI: float
     aqiStatus: str
@@ -156,6 +157,7 @@ def compute_telemetry_response() -> TelemetryResponse:
 
     return TelemetryResponse(
         city=str(LOCATION_NAME),
+        coordinates=f"{LOCATION_LATITUDE}° N, {LOCATION_LONGITUDE}° E",
         stationName=str(STATION_NAME),
         currentAQI=float(current_aqi),
         aqiStatus=get_aqi_status(current_aqi),
