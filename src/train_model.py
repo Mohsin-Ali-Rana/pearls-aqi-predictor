@@ -1,4 +1,5 @@
 import os
+import json
 import re
 import hopsworks
 import pandas as pd
@@ -189,6 +190,30 @@ def train_evaluate_and_register_best_model():
     print(f"  Day 2 (48h) [{winner_d2_name:10s}] -> RMSE: {d2_m['rmse']:.4f} | MAE: {d2_m['mae']:.4f} | R2: {d2_m['r2']:.4f} | Persistence Lift: +{d2_lift_rmse_pct:.2f}%")
     print(f"  Day 3 (72h) [{winner_d3_name:10s}] -> RMSE: {d3_m['rmse']:.4f} | MAE: {d3_m['mae']:.4f} | R2: {d3_m['r2']:.4f} | Persistence Lift: +{d3_lift_rmse_pct:.2f}%")
     print(f"  Overall 72H Direct Average -> RMSE: {overall_rmse:.4f} | MAE: {overall_mae:.4f} | R2: {overall_r2:.4f} | Overall Lift: +{overall_lift_rmse_pct:.2f}%")
+
+    tournament_summary = {
+        "timestamp": pd.Timestamp.now().isoformat(),
+        "persistence_baseline": {
+            "day1": p_d1_m,
+            "day2": p_d2_m,
+            "day3": p_d3_m
+        },
+        "horizons": {
+            "24h": {name: {**res["metrics"], "winner": (name == winner_d1_name)} for name, res in d1_results.items()},
+            "48h": {name: {**res["metrics"], "winner": (name == winner_d2_name)} for name, res in d2_results.items()},
+            "72h": {name: {**res["metrics"], "winner": (name == winner_d3_name)} for name, res in d3_results.items()}
+        },
+        "lifts": {
+            "day1_lift_rmse_pct": d1_lift_rmse_pct,
+            "day2_lift_rmse_pct": d2_lift_rmse_pct,
+            "day3_lift_rmse_pct": d3_lift_rmse_pct,
+            "overall_lift_rmse_pct": overall_lift_rmse_pct
+        }
+    }
+    os.makedirs("data", exist_ok=True)
+    with open(os.path.join("data", "tournament_summary.json"), "w") as f:
+        json.dump(tournament_summary, f, indent=2)
+    print("✅ Exported tournament matrix summary to 'data/tournament_summary.json'.")
 
     # Hopsworks metadata ONLY allows numbers (floats/ints) - no strings!
     best_metrics = {

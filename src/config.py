@@ -28,8 +28,8 @@ STATION_NAME = os.getenv("STATION_NAME", "Central Atmospheric Observation Statio
 OPEN_METEO_AQI_URL = "https://air-quality-api.open-meteo.com/v1/air-quality"
 
 # SMTP Email Alert Credentials
-SMTP_HOST = os.getenv("SMTP_HOST", "")
+SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
 SMTP_USER = os.getenv("SMTP_USER", "")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
-SMTP_SENDER = os.getenv("SMTP_SENDER", SMTP_USER)
+SMTP_SENDER_NAME = os.getenv("SMTP_SENDER_NAME", "Pearls AQI Intelligence")

@@ -35,9 +35,10 @@ def run_eda(save_json: bool = True) -> dict:
     stats_df = df[numeric_cols].describe().T.round(2)
     stats_summary = stats_df.to_dict(orient="index")
 
-    # 2. Correlation Matrix with PM2.5
+    # 2. Correlation Matrix with PM2.5 and Full Pairwise Matrix
     corr_matrix = df[numeric_cols].corr().round(4)
     pm25_correlations = corr_matrix['pm2_5'].sort_values(ascending=False).to_dict()
+    full_corr_matrix_dict = corr_matrix.to_dict()
 
     # 3. Diurnal (Hourly) PM2.5 & AQI Profile
     hourly_avg = df.groupby('hour')[['pm2_5', 'european_aqi', 'temperature_2m', 'wind_speed_10m']].mean().round(2)
@@ -64,6 +65,7 @@ def run_eda(save_json: bool = True) -> dict:
         "analysis_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "total_observations": len(df),
         "target_correlations": pm25_correlations,
+        "full_correlation_matrix": full_corr_matrix_dict,
         "hourly_diurnal_profile": hourly_profile,
         "outlier_thresholds": outliers,
         "statistical_summary": stats_summary

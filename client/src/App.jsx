@@ -1,42 +1,51 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Activity, ShieldAlert, RefreshCw, MapPin, CheckCircle2, 
-  Layers, Globe, LayoutDashboard, Sparkles, Mail, Send, LineChart, TrendingUp, ChevronRight
+  Activity, RefreshCw, MapPin, Radio, Bell,
+  Globe, LayoutDashboard, Sparkles, LineChart, TrendingUp, ChevronRight, Cpu, Layers
 } from 'lucide-react';
 import { 
-  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, 
-  BarChart, Bar, Cell, ReferenceLine
+  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceArea, ReferenceLine
 } from 'recharts';
+
+import HeroAQIGauge from './components/HeroAQIGauge';
+import ForecastCard from './components/ForecastCard';
+import ShapWaterfall from './components/ShapWaterfall';
+import TournamentChart from './components/TournamentChart';
+import CorrelationHeatmap from './components/CorrelationHeatmap';
+import MLOpsTelemetryBar, { EmailAlertDispatcher } from './components/MLOpsTelemetryBar';
 
 export default function App() {
   const [activeNav, setActiveNav] = useState('dashboard');
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [userEmail, setUserEmail] = useState('');
-  const [alertThreshold, setAlertThreshold] = useState('150');
-  const [subStatus, setSubStatus] = useState(null);
+  const [syncProgress, setSyncProgress] = useState(0);
   const [edaData, setEdaData] = useState(null);
 
-  // Telemetry State - Zero static fake fallbacks
+  // Telemetry State - Bound exclusively to live backend telemetry
   const [telemetry, setTelemetry] = useState({
-    city: "Islamabad Capital Territory",
+    city: "Wah Cantt / Taxila Region",
+    coordinates: "33.77° N, 72.75° E",
     stationName: "Primary Observation Station",
     currentAQI: null,
     aqiStatus: "",
-    aqiColor: "#0284C7",
-    aqiDelta: "Live Dynamic Stream",
+    aqiColor: "#0D9488",
+    aqiDelta: "Live Stream Active",
     pm25: null,
     whoStatus: "WHO Guidelines Evaluated",
     healthAdvisory: "Loading Advisory...",
     healthDetail: "Fetching health telemetry parameters...",
     confidenceScore: null,
     modelName: "Direct Multi-Horizon Ensemble",
-    featureStoreStatus: "Active",
+    featureStoreStatus: "Connecting",
     forecasts: [],
     trendHistory: [],
     hotspots: [],
     shapExplanations: [],
+    localShapContributions: [],
+    localShapByHorizon: null,
+    currentWeather: null,
+    persistenceLift: null,
     systemMetrics: {
       completeness: "--",
       accuracy: "--",
@@ -45,8 +54,12 @@ export default function App() {
   });
 
   const fetchTelemetryData = async (showSyncAnim = false) => {
-    if (showSyncAnim) setIsSyncing(true);
-    else setIsLoading(true);
+    if (showSyncAnim) {
+      setIsSyncing(true);
+      setSyncProgress(15);
+    } else {
+      setIsLoading(true);
+    }
 
     const endpoints = [
       '/api/telemetry',
@@ -54,6 +67,15 @@ export default function App() {
       'http://localhost:8000/api/telemetry'
     ];
     let success = false;
+    
+    // Smooth progress animation if syncing
+    let interval;
+    if (showSyncAnim) {
+      interval = setInterval(() => {
+        setSyncProgress((prev) => (prev < 90 ? prev + 25 : prev));
+      }, 200);
+    }
+
     for (const endpoint of endpoints) {
       try {
         const response = await fetch(endpoint);
@@ -65,13 +87,25 @@ export default function App() {
         }
       } catch (error) {}
     }
+
     if (!success) {
       console.warn("Telemetry API offline or starting up.");
     }
-    setTimeout(() => {
-      setIsLoading(false);
-      setIsSyncing(false);
-    }, 350);
+
+    if (showSyncAnim) {
+      setSyncProgress(100);
+      setTimeout(() => {
+        setIsLoading(false);
+        setIsSyncing(false);
+        setSyncProgress(0);
+        if (interval) clearInterval(interval);
+      }, 700);
+    } else {
+      setTimeout(() => {
+        setIsLoading(false);
+        setIsSyncing(false);
+      }, 350);
+    }
   };
 
   const fetchEdaData = async () => {
@@ -93,722 +127,818 @@ export default function App() {
     fetchEdaData();
   }, []);
 
-  const handleSubscribe = async (e) => {
-    e.preventDefault();
-    if (!userEmail || !userEmail.includes('@')) {
-      setSubStatus({ type: 'error', text: 'Please enter a valid email address.' });
-      return;
-    }
-    try {
-      const ep = '/api/subscribe';
-      const res = await fetch(ep, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: userEmail, threshold: alertThreshold })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setSubStatus({ type: 'success', text: data.message || `Subscribed ${userEmail} for AQI > ${alertThreshold} alerts!` });
-        setUserEmail('');
-      } else {
-        setSubStatus({ type: 'error', text: data.detail || 'Subscription processed.' });
+  const scrollToAlertDispatcher = () => {
+    setActiveNav('dashboard');
+    
+    const performScroll = () => {
+      const elem = document.getElementById('email-alert-section');
+      if (elem) {
+        const yOffset = -60;
+        const y = elem.getBoundingClientRect().top + window.pageYOffset + yOffset;
+        window.scrollTo({ top: y, behavior: 'smooth' });
+        return true;
       }
-    } catch (err) {
-      setSubStatus({ type: 'success', text: `Subscribed ${userEmail} for AQI > ${alertThreshold} automated alerts!` });
-      setUserEmail('');
+      return false;
+    };
+
+    if (!performScroll()) {
+      let attempts = 0;
+      const interval = setInterval(() => {
+        attempts++;
+        if (performScroll() || attempts > 20) {
+          clearInterval(interval);
+        }
+      }, 40);
     }
   };
 
   const navItems = [
     { id: 'dashboard', label: 'Live Overview', icon: LayoutDashboard },
-    { id: 'eda', label: 'Daily Trends', icon: LineChart },
-    { id: 'shap', label: 'Model Factors', icon: Sparkles },
-    { id: 'regional', label: 'Atmospheric Features', icon: Globe },
+    { id: 'trends', label: 'Daily Trends (EDA)', icon: LineChart },
+    { id: 'shap', label: 'Model Factors (SHAP)', icon: Sparkles },
+    { id: 'tournament', label: 'Multi-Model Tournament', icon: Cpu },
+    { id: 'regional', label: 'Atmospheric Features', icon: Globe }
   ];
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#F8FAFC', color: '#0F172A', fontFamily: "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif" }}>
+    <div style={{ 
+      display: 'flex', 
+      minHeight: '100vh', 
+      backgroundColor: '#F8FAFC', 
+      fontFamily: "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif",
+      color: '#0F172A'
+    }}>
       
-      {/* Sidebar Navigation */}
+      {/* Light Professional Executive Sidebar */}
       <aside style={{ 
-        width: '275px', 
+        width: '280px', 
         backgroundColor: '#FFFFFF', 
         borderRight: '1px solid #E2E8F0', 
+        padding: '1.75rem 1.25rem', 
         display: 'flex', 
         flexDirection: 'column', 
-        justify: 'space-between', 
-        padding: '1.75rem 1.25rem', 
-        position: 'fixed', 
-        height: '100vh', 
-        boxSizing: 'border-box', 
-        zIndex: 20,
-        boxShadow: '2px 0 16px rgba(0, 0, 0, 0.02)'
+        justify: 'space-between',
+        position: 'fixed',
+        height: '100vh',
+        boxSizing: 'border-box',
+        zIndex: 50,
+        boxShadow: '4px 0 24px rgba(15, 23, 42, 0.03)'
       }}>
         <div>
-          {/* Executive Brand Logo */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', marginBottom: '2.5rem', padding: '0 0.5rem' }}>
-            <div style={{ 
-              background: 'linear-gradient(135deg, #0284C7 0%, #0F766E 100%)', 
-              padding: '0.7rem', 
-              borderRadius: '0.9rem', 
-              boxShadow: '0 8px 18px -4px rgba(2, 132, 199, 0.35)',
-              display: 'flex',
-              alignItems: 'center',
-              justify: 'center'
-            }}>
-              <Activity size={22} color="#FFFFFF" />
-            </div>
-            <div>
-              <h1 style={{ fontSize: '1.1rem', fontWeight: '800', margin: 0, color: '#0F172A', letterSpacing: '-0.02em', lineHeight: 1.1 }}>
-                PEARLS AQI
-              </h1>
-              <span style={{ fontSize: '0.65rem', color: '#0284C7', fontWeight: '800', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-                Atmospheric Intelligence
-              </span>
+          {/* Logo Header Container (New Transparent PNG Logo + Crisp Typography) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', marginBottom: '2.2rem' }}>
+            <img 
+              src="/pearls_logo_new.png" 
+              alt="PEARLS AQI Logo" 
+              style={{ 
+                height: '46px', 
+                width: 'auto',
+                maxHeight: '46px',
+                objectFit: 'contain',
+                flexShrink: 0,
+                filter: 'drop-shadow(0 4px 10px rgba(13, 148, 136, 0.20))'
+              }} 
+              onError={(e) => {
+                e.target.src = '/logo.png';
+              }}
+            />
+
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                <span style={{ fontSize: '1.25rem', fontWeight: '900', color: '#0F172A', letterSpacing: '-0.03em', lineHeight: 1.1 }}>
+                  PEARLS
+                </span>
+                <span style={{ fontSize: '1.25rem', fontWeight: '900', color: '#0D9488', letterSpacing: '-0.03em', lineHeight: 1.1 }}>
+                  AQI
+                </span>
+              </div>
+              
+              <div style={{ fontSize: '0.6rem', fontWeight: '800', color: '#64748B', letterSpacing: '0.08em', textTransform: 'uppercase', marginTop: '0.1rem' }}>
+                ATMOSPHERIC INTELLIGENCE
+              </div>
+
+              <div style={{ marginTop: '0.35rem' }}>
+                <span style={{ 
+                  fontSize: '0.62rem', 
+                  fontWeight: '900', 
+                  color: '#0D9488', 
+                  letterSpacing: '0.06em', 
+                  textTransform: 'uppercase', 
+                  backgroundColor: '#F0FDFA', 
+                  padding: '0.2rem 0.55rem', 
+                  borderRadius: '0.35rem', 
+                  border: '1px solid #CCFBF1',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.3rem'
+                }}>
+                  <span style={{ width: '5px', height: '5px', backgroundColor: '#0D9488', borderRadius: '50%' }} />
+                  COMMAND CENTER
+                </span>
+              </div>
             </div>
           </div>
 
-          {/* Navigation Links */}
+          {/* Navigation Items */}
           <nav style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
             {navItems.map((navItem) => {
               const Icon = navItem.icon;
               const isActive = activeNav === navItem.id;
               return (
-                <motion.button 
-                  key={navItem.id} 
+                <button
+                  key={navItem.id}
                   onClick={() => setActiveNav(navItem.id)}
-                  whileHover={{ x: 3 }}
-                  whileTap={{ scale: 0.98 }}
-                  style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
                     justify: 'space-between',
-                    width: '100%', 
-                    padding: '0.8rem 1rem', 
-                    borderRadius: '0.75rem', 
-                    backgroundColor: isActive ? '#0284C7' : 'transparent', 
-                    color: isActive ? '#FFFFFF' : '#475569', 
-                    border: 'none', 
-                    cursor: 'pointer', 
-                    fontWeight: isActive ? '700' : '600', 
+                    width: '100%',
+                    padding: '0.8rem 1rem',
+                    borderRadius: '0.75rem',
+                    border: isActive ? '1px solid #CCFBF1' : '1px solid transparent',
+                    backgroundColor: isActive ? '#F0FDFA' : 'transparent',
+                    color: isActive ? '#0D9488' : '#64748B',
+                    fontWeight: isActive ? '800' : '600',
                     fontSize: '0.88rem',
-                    transition: 'all 0.2s ease',
-                    boxShadow: isActive ? '0 8px 20px -4px rgba(2, 132, 199, 0.4)' : 'none'
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                    textAlign: 'left'
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-                    <Icon size={18} color={isActive ? '#FFFFFF' : '#64748B'} />
+                    <Icon size={19} color={isActive ? '#0D9488' : '#64748B'} />
                     <span>{navItem.label}</span>
                   </div>
-                  {isActive && <ChevronRight size={16} color="#FFFFFF" />}
-                </motion.button>
+                  {isActive && <ChevronRight size={16} color="#0D9488" />}
+                </button>
               );
             })}
           </nav>
         </div>
 
-        {/* System Operator & Status Card */}
-        <div style={{ 
-          backgroundColor: '#F8FAFC', 
-          padding: '0.9rem 1rem', 
-          borderRadius: '1rem', 
-          border: '1px solid #E2E8F0', 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: '0.75rem' 
-        }}>
-          <div style={{ 
-            background: 'linear-gradient(135deg, #0284C7, #0369A1)', 
-            width: '38px', 
-            height: '38px', 
-            borderRadius: '50%', 
-            display: 'flex', 
-            alignItems: 'center', 
-            justify: 'center', 
-            fontWeight: '800', 
-            fontSize: '0.85rem', 
-            color: '#FFFFFF',
-            boxShadow: '0 4px 12px rgba(2, 132, 199, 0.25)'
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+          {/* Idea 5: "Get Instant Alerts" Quick Action Card (Refined Light Theme) */}
+          <motion.button
+            whileHover={{ scale: 1.02, backgroundColor: '#F0FDFA', borderColor: '#99F6E4' }}
+            whileTap={{ scale: 0.98 }}
+            onClick={scrollToAlertDispatcher}
+            style={{
+              backgroundColor: '#FFFFFF',
+              padding: '0.8rem 0.95rem',
+              borderRadius: '0.85rem',
+              border: '1px solid #E2E8F0',
+              boxShadow: '0 2px 10px rgba(15, 23, 42, 0.04)',
+              display: 'flex',
+              alignItems: 'center',
+              justify: 'space-between',
+              width: '100%',
+              cursor: 'pointer',
+              textAlign: 'left',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.7rem' }}>
+              <div style={{ position: 'relative', width: '34px', height: '34px', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                {/* Glowing Pulse Accent */}
+                <motion.div
+                  animate={{ scale: [1, 1.3, 1], opacity: [0.4, 0, 0.4] }}
+                  transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    borderRadius: '50%',
+                    backgroundColor: '#0D9488'
+                  }}
+                />
+                <div style={{
+                  position: 'relative',
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '0.55rem',
+                  background: 'linear-gradient(135deg, #0D9488 0%, #0284C7 100%)',
+                  boxShadow: '0 2px 8px rgba(13, 148, 136, 0.25)',
+                  display: 'grid',
+                  placeItems: 'center',
+                  zIndex: 2
+                }}>
+                  <Bell size={16} color="#FFFFFF" />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <span style={{ fontSize: '0.74rem', fontWeight: '800', color: '#0F172A', letterSpacing: '-0.01em' }}>
+                  AQI ALERT DISPATCH
+                </span>
+                <span style={{ fontSize: '0.62rem', color: '#0D9488', fontWeight: '700', letterSpacing: '0.02em' }}>
+                  Configure Early Warning
+                </span>
+              </div>
+            </div>
+            <ChevronRight size={16} color="#0D9488" />
+          </motion.button>
+
+          {/* Idea 4: Interactive Atmospheric Globe / Satellite Radar Orb Widget */}
+          <div style={{
+            background: 'linear-gradient(135deg, #F0FDFA 0%, #E0F2FE 100%)',
+            padding: '0.85rem 0.95rem',
+            borderRadius: '0.85rem',
+            border: '1px solid #CCFBF1',
+            boxShadow: '0 4px 16px rgba(13, 148, 136, 0.08)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+            position: 'relative',
+            overflow: 'hidden'
           }}>
-            PE
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: '0.82rem', fontWeight: '800', color: '#0F172A' }}>PEARLS MLOps Engine</div>
-            <div style={{ fontSize: '0.68rem', color: '#10B981', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-              <span className="pulse-dot" style={{ width: '6px', height: '6px', backgroundColor: '#10B981', borderRadius: '50%', display: 'inline-block' }}></span>
-              LightGBM v2.4 Serving
+            {/* Subtle Ambient Background Flare */}
+            <div style={{
+              position: 'absolute',
+              top: '-20px',
+              right: '-20px',
+              width: '60px',
+              height: '60px',
+              borderRadius: '50%',
+              background: 'radial-gradient(circle, rgba(14,165,233,0.2) 0%, rgba(240,253,250,0) 70%)',
+              pointerEvents: 'none'
+            }} />
+
+            {/* Animated 3D Spinning Globe Orb with Orbit Ring */}
+            <div style={{ position: 'relative', width: '42px', height: '42px', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+              {/* Outer Orbit Halo Ring */}
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ duration: 12, repeat: Infinity, ease: 'linear' }}
+                style={{
+                  position: 'absolute',
+                  inset: '-4px',
+                  borderRadius: '50%',
+                  border: '1.5px dashed rgba(13, 148, 136, 0.4)',
+                  borderTopColor: '#0284C7'
+                }}
+              />
+
+              {/* Glowing Globe Sphere */}
+              <div style={{
+                width: '36px',
+                height: '36px',
+                borderRadius: '50%',
+                background: 'radial-gradient(circle at 35% 35%, #2DD4BF 0%, #0D9488 60%, #0F172A 100%)',
+                boxShadow: '0 2px 10px rgba(13, 148, 136, 0.35)',
+                display: 'grid',
+                placeItems: 'center',
+                position: 'relative',
+                overflow: 'hidden'
+              }}>
+                {/* Rotating Internal Globe Grid */}
+                <motion.div
+                  animate={{ rotate: [0, 360] }}
+                  transition={{ duration: 20, repeat: Infinity, ease: 'linear' }}
+                  style={{ opacity: 0.85 }}
+                >
+                  <Globe size={22} color="#FFFFFF" />
+                </motion.div>
+              </div>
+            </div>
+
+            {/* Label & Live Satellite Status */}
+            <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: '0.74rem', fontWeight: '900', color: '#0F172A', letterSpacing: '-0.01em' }}>
+                  SATELLITE RADAR
+                </span>
+                <motion.span
+                  animate={{ opacity: [1, 0.3, 1] }}
+                  transition={{ duration: 1.8, repeat: Infinity }}
+                  style={{
+                    width: '7px',
+                    height: '7px',
+                    borderRadius: '50%',
+                    backgroundColor: '#10B981',
+                    boxShadow: '0 0 8px #10B981'
+                  }}
+                />
+              </div>
+              <div style={{ fontSize: '0.62rem', fontWeight: '700', color: '#0D9488', marginTop: '0.1rem', letterSpacing: '0.02em' }}>
+                Aerosol Observation Active
+              </div>
             </div>
           </div>
         </div>
       </aside>
 
-      {/* Main Workspace */}
-      <main style={{ marginLeft: '275px', flex: 1, padding: '2rem 2.5rem', display: 'flex', flexDirection: 'column', gap: '1.75rem', boxSizing: 'border-box', maxWidth: '1440px' }}>
-        
-        {/* Top Header Bar */}
+      {/* Main Workspace Area */}
+      <main style={{ marginLeft: '280px', flex: 1, padding: '2rem 2.5rem', display: 'flex', flexDirection: 'column', gap: '1.75rem', boxSizing: 'border-box', maxWidth: '1440px' }}>
+               {/* Flagship Hero Command Banner (Wah Cantt & Taxila Primary Zone) */}
         <header style={{ 
-          display: 'flex', 
-          justify: 'space-between', 
-          alignItems: 'center', 
           backgroundColor: '#FFFFFF', 
-          padding: '1.1rem 1.75rem', 
+          padding: '1.6rem 2.2rem', 
           borderRadius: '1.25rem', 
-          border: '1px solid #E2E8F0',
-          boxShadow: '0 4px 20px -2px rgba(0, 0, 0, 0.03)'
+          border: '1.5px solid #CCFBF1',
+          boxShadow: '0 8px 32px -4px rgba(13, 148, 136, 0.12), 0 4px 18px -2px rgba(15, 23, 42, 0.04)',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: '1.5rem',
+          position: 'relative',
+          overflow: 'hidden'
         }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: '800', margin: 0, color: '#0F172A', letterSpacing: '-0.02em' }}>
-                Air Quality Intelligence Control Center
-              </h2>
-              <span style={{ fontSize: '0.68rem', fontWeight: '800', backgroundColor: '#E0F2FE', color: '#0369A1', padding: '0.25rem 0.6rem', borderRadius: '0.4rem', border: '1px solid #BAE6FD' }}>
-                Production Ready
+          {/* Ambient subtle decorative background accent */}
+          <div style={{
+            position: 'absolute',
+            top: '-50px',
+            right: '-50px',
+            width: '260px',
+            height: '260px',
+            background: 'radial-gradient(circle, rgba(13,148,136,0.07) 0%, rgba(255,255,255,0) 70%)',
+            pointerEvents: 'none'
+          }} />
+
+          {/* Left Hero Content: Large Prominent Dual-Tone Title & Subtitle */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem', zIndex: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', flexWrap: 'wrap' }}>
+              <h1 style={{ 
+                fontSize: '2.1rem', 
+                fontWeight: '900', 
+                margin: 0, 
+                letterSpacing: '-0.035em',
+                lineHeight: 1.1,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
+              }}>
+                <span style={{ color: '#0F172A' }}>Wah Cantt</span>
+                <span style={{ color: '#0D9488' }}>&amp; Taxila</span>
+              </h1>
+
+              <span style={{
+                backgroundColor: '#0D9488',
+                color: '#FFFFFF',
+                fontSize: '0.72rem',
+                fontWeight: '900',
+                padding: '0.3rem 0.75rem',
+                borderRadius: '0.6rem',
+                letterSpacing: '0.05em',
+                textTransform: 'uppercase',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                boxShadow: '0 4px 14px rgba(13, 148, 136, 0.32)'
+              }}>
+                <span className="target-badge-pulse" style={{ width: '7px', height: '7px', backgroundColor: '#34D399', borderRadius: '50%', display: 'inline-block' }} />
+                LIVE GRID ZONE
               </span>
             </div>
-            <p style={{ fontSize: '0.78rem', color: '#64748B', margin: '0.2rem 0 0 0' }}>
-              Real-time environmental monitoring & 72-hour multi-horizon AI forecasting
+
+            <p style={{ fontSize: '0.86rem', color: '#64748B', margin: 0, fontWeight: '600' }}>
+              Real-time PM2.5 Observation Stream &amp; 72-Hour Multi-Horizon AI Engine
             </p>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          {/* Right Telemetry Controls */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', zIndex: 1, flexShrink: 0 }}>
+            
+            {/* Target Coordinate Grid Card (No Repeated City Text) */}
             <div style={{ 
               backgroundColor: '#F8FAFC', 
               border: '1px solid #E2E8F0', 
-              padding: '0.55rem 1rem', 
-              borderRadius: '0.75rem', 
-              fontSize: '0.82rem', 
-              fontWeight: '700', 
-              color: '#334155', 
+              padding: '0.6rem 1.1rem', 
+              borderRadius: '0.9rem', 
               display: 'flex', 
               alignItems: 'center', 
-              gap: '0.5rem' 
+              gap: '0.7rem',
+              boxShadow: '0 2px 10px rgba(15, 23, 42, 0.03)'
             }}>
-              <MapPin size={15} color="#0284C7" />
-              <span>{telemetry?.city || 'Loading location...'} | {telemetry?.coordinates || 'Active Station'}</span>
+              <div style={{ 
+                width: '34px', 
+                height: '34px', 
+                borderRadius: '0.6rem', 
+                backgroundColor: '#0D9488', 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center',
+                flexShrink: 0,
+                boxShadow: '0 2px 10px rgba(13, 148, 136, 0.28)'
+              }}>
+                <MapPin size={17} color="#FFFFFF" />
+              </div>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
+                <span style={{ fontSize: '0.78rem', fontWeight: '800', color: '#0F172A', letterSpacing: '-0.01em' }}>
+                  Target Coordinate Grid
+                </span>
+                <span style={{ fontSize: '0.74rem', color: '#0D9488', fontWeight: '700', letterSpacing: '0.01em' }}>
+                  33.77° N, 72.75° E
+                </span>
+              </div>
             </div>
 
-            <motion.button 
+            {/* Sync Telemetry Action Button */}
+            <button 
               onClick={() => fetchTelemetryData(true)} 
-              whileHover={{ scale: 1.03 }}
-              whileTap={{ scale: 0.97 }}
               disabled={isSyncing}
               style={{ 
                 display: 'flex', 
                 alignItems: 'center', 
-                gap: '0.5rem', 
-                backgroundColor: '#0284C7', 
+                gap: '0.55rem', 
+                backgroundColor: isSyncing ? '#0F766E' : '#0D9488', 
                 color: '#FFFFFF', 
-                padding: '0.55rem 1.25rem', 
-                borderRadius: '0.75rem', 
+                padding: '0.75rem 1.4rem', 
+                borderRadius: '0.9rem', 
                 border: 'none', 
-                cursor: 'pointer', 
-                fontSize: '0.82rem', 
-                fontWeight: '700',
-                boxShadow: '0 8px 18px -4px rgba(2, 132, 199, 0.35)'
+                cursor: isSyncing ? 'not-allowed' : 'pointer', 
+                fontSize: '0.88rem', 
+                fontWeight: '800',
+                boxShadow: '0 4px 18px rgba(13, 148, 136, 0.32)',
+                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                whiteSpace: 'nowrap'
               }}
+              onMouseEnter={(e) => !isSyncing && (e.currentTarget.style.transform = 'translateY(-1px)')}
+              onMouseLeave={(e) => !isSyncing && (e.currentTarget.style.transform = 'translateY(0)')}
             >
-              <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
-              <span>{isSyncing ? 'Syncing...' : 'Sync Telemetry'}</span>
-            </motion.button>
+              <RefreshCw size={16} className={isSyncing ? 'animate-spin' : ''} />
+              <span>{isSyncing ? 'Scanning Telemetry...' : 'Sync Telemetry'}</span>
+            </button>
+
           </div>
         </header>
 
-        {/* Tab Navigation Content Wrapper */}
+        {/* Dynamic Scanning Animation Banner when Loading or Syncing Telemetry */}
+        <AnimatePresence>
+          {(isSyncing || isLoading) && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              style={{
+                backgroundColor: '#FFFFFF',
+                borderRadius: '1rem',
+                border: '1px solid #0D9488',
+                padding: '1rem 1.5rem',
+                position: 'relative',
+                overflow: 'hidden',
+                boxShadow: '0 4px 20px rgba(13, 148, 136, 0.12)'
+              }}
+            >
+              <div className="radar-scan-line" />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'relative', zIndex: 2 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
+                  <Radio size={20} color="#0D9488" className="radar-pulse" />
+                  <div>
+                    <span style={{ fontSize: '0.88rem', fontWeight: '800', color: '#0F172A' }}>
+                      Querying Open-Meteo Satellite Streams & Hopsworks Feature Store V2...
+                    </span>
+                    <p style={{ margin: '0.15rem 0 0 0', fontSize: '0.75rem', color: '#64748B' }}>
+                      Re-calibrating direct 72-hour multi-horizon state vectors for Wah Cantt / Taxila grid
+                    </p>
+                  </div>
+                </div>
+                <span style={{ fontSize: '0.85rem', fontWeight: '900', color: '#0D9488', fontFamily: 'monospace' }}>
+                  {syncProgress}%
+                </span>
+              </div>
+              <div style={{ marginTop: '0.75rem', height: '4px', backgroundColor: '#E2E8F0', borderRadius: '2px', overflow: 'hidden' }}>
+                <div style={{ width: `${syncProgress}%`, height: '100%', backgroundColor: '#0D9488', transition: 'width 0.2s ease' }} />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Tab Content Wrapper */}
         <AnimatePresence mode="wait">
           
           {/* TAB 1: LIVE DASHBOARD OVERVIEW */}
           {activeNav === 'dashboard' && (
             <motion.div 
               key="dashboard"
-              initial={{ opacity: 0, y: 15 }}
+              initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -15 }}
-              transition={{ duration: 0.3, ease: 'easeOut' }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.25 }}
               style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}
             >
-              
-              {/* 4 Multi-Horizon Forecast Cards Grid */}
+              {/* Live MLOps Infrastructure Health Ticker */} 
+              <MLOpsTelemetryBar systemMetrics={telemetry.systemMetrics} modelName={telemetry.modelName} featureStoreStatus={telemetry.featureStoreStatus} />
+
+              {/* Executive Hero Arc Gauge + Meteorological Cards + Persistence Lift */}
+              <HeroAQIGauge telemetry={telemetry} isLoading={isLoading} />
+
+              {/* 3 Multi-Horizon Forecast Cards (+24H, +48H, +72H) */}
               <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                  <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0F172A', margin: 0, display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                    <Layers size={20} color="#0284C7" /> Multi-Horizon Forecast & Health Risk Advisories
-                  </h3>
-                  <span style={{ fontSize: '0.75rem', color: '#059669', fontWeight: '700', backgroundColor: '#ECFDF5', padding: '0.3rem 0.75rem', borderRadius: '0.5rem', border: '1px solid #A7F3D0', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                    <CheckCircle2 size={14} /> EPA US AQI Standard Calibrated
-                  </span>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1.25rem' }}>
-                  
-                  {/* Card 1: CURRENT */}
-                  <motion.div 
-                    whileHover={{ y: -4 }}
-                    style={{ 
-                      backgroundColor: '#FFFFFF', 
-                      padding: '1.5rem', 
-                      borderRadius: '1.25rem', 
-                      border: '1px solid #E2E8F0', 
-                      boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.03)',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      justify: 'space-between'
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '0.78rem', fontWeight: '800', color: '#0284C7', textTransform: 'uppercase', letterSpacing: '0.06em' }}>LIVE CURRENT</span>
-                      <span style={{ width: '9px', height: '9px', backgroundColor: telemetry.aqiColor || '#0284C7', borderRadius: '50%', display: 'inline-block' }} className="pulse-dot"></span>
-                    </div>
-
-                    {isLoading ? (
-                      <div style={{ height: '70px', margin: '0.75rem 0' }} className="skeleton-shimmer"></div>
-                    ) : (
-                      <div style={{ margin: '0.75rem 0' }}>
-                        <div style={{ fontSize: '2.8rem', fontWeight: '900', color: telemetry.aqiColor || '#0284C7', lineHeight: '1', letterSpacing: '-0.03em' }}>
-                          {telemetry.currentAQI !== null ? telemetry.currentAQI : "--"}
-                        </div>
-                        <div style={{ fontSize: '0.82rem', fontWeight: '800', color: telemetry.aqiColor || '#0284C7', marginTop: '0.4rem' }}>
-                          {telemetry.aqiStatus || "AQI Status"}
-                        </div>
-                      </div>
-                    )}
-
-                    <div style={{ backgroundColor: '#F8FAFC', padding: '0.75rem', borderRadius: '0.75rem', border: '1px solid #F1F5F9' }}>
-                      <div style={{ fontSize: '0.72rem', fontWeight: '800', color: '#475569', marginBottom: '0.2rem' }}>
-                        🏥 {telemetry.healthAdvisory || "Health Advisory"}
-                      </div>
-                      <div style={{ fontSize: '0.68rem', color: '#64748B', lineHeight: '1.35' }}>
-                        {telemetry.healthDetail || "Evaluation based on EPA PM2.5 guidelines."}
-                      </div>
-                    </div>
-                  </motion.div>
-
-                  {/* Horizon 2: 24H Forecast */}
-                  {isLoading ? (
-                    [1, 2, 3].map(i => <div key={i} style={{ height: '220px' }} className="skeleton-shimmer"></div>)
+                <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0F172A', margin: '0 0 1rem 0', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                  <Layers size={20} color="#0D9488" /> Direct Multi-Horizon AI Forecasts (+24h, +48h, +72h)
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '1.25rem' }}>
+                  {isLoading || !telemetry.forecasts || telemetry.forecasts.length === 0 ? (
+                    [{ horizon: '24H' }, { horizon: '48H' }, { horizon: '72H' }].map((fc, idx) => (
+                      <ForecastCard key={idx} forecast={fc} isLoading={true} />
+                    ))
                   ) : (
                     telemetry.forecasts.map((fc, idx) => (
-                      <motion.div 
-                        key={idx}
-                        whileHover={{ y: -4 }}
-                        style={{ 
-                          backgroundColor: '#FFFFFF', 
-                          padding: '1.5rem', 
-                          borderRadius: '1.25rem', 
-                          border: '1px solid #E2E8F0', 
-                          boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.03)',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          justify: 'space-between'
-                        }}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ fontSize: '0.78rem', fontWeight: '800', color: '#0284C7', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{fc.horizon} FORECAST</span>
-                          <span style={{ fontSize: '0.68rem', fontWeight: '800', color: fc.color || '#0284C7', backgroundColor: '#F8FAFC', padding: '0.2rem 0.5rem', borderRadius: '0.4rem', border: '1px solid #E2E8F0' }}>
-                            ±{fc.rmse ? fc.rmse : '4.2'} RMSE
-                          </span>
-                        </div>
-
-                        <div style={{ margin: '0.75rem 0' }}>
-                          <div style={{ fontSize: '2.8rem', fontWeight: '900', color: fc.color || '#0284C7', lineHeight: '1', letterSpacing: '-0.03em' }}>
-                            {fc.aqi} <span style={{ fontSize: '0.9rem', fontWeight: '700', color: '#64748B' }}>AQI</span>
-                          </div>
-                          <div style={{ fontSize: '0.82rem', fontWeight: '800', color: fc.color || '#0284C7', marginTop: '0.4rem' }}>
-                            {fc.status}
-                          </div>
-                        </div>
-
-                        <div style={{ backgroundColor: '#F8FAFC', padding: '0.75rem', borderRadius: '0.75rem', border: '1px solid #F1F5F9' }}>
-                          <div style={{ fontSize: '0.72rem', fontWeight: '800', color: '#475569', marginBottom: '0.2rem' }}>
-                            🏥 {fc.healthAdvisory || "Health Impact Advisory"}
-                          </div>
-                          <div style={{ fontSize: '0.68rem', color: '#64748B', lineHeight: '1.35' }}>
-                            {fc.healthDetail || "Target horizon forecast advisory."}
-                          </div>
-                        </div>
-                      </motion.div>
+                      <ForecastCard key={idx} forecast={fc} isLoading={false} />
                     ))
                   )}
-
                 </div>
               </div>
 
-              {/* 24-Hour Forecast Trajectory Chart */}
+              {/* 24-Hour / 3-Day Forecast Trajectory Spline & Severity Threshold Bands */}
               <div style={{ 
                 backgroundColor: '#FFFFFF', 
                 padding: '1.75rem', 
                 borderRadius: '1.25rem', 
                 border: '1px solid #E2E8F0',
-                boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.03)'
+                boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.04)'
               }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                  <div>
-                    <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0F172A', margin: 0, display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                      <TrendingUp size={20} color="#0284C7" /> 24-Hour Forecast Trajectory & Tactical Curve
-                    </h3>
-                    <p style={{ fontSize: '0.78rem', color: '#64748B', margin: '0.2rem 0 0 0' }}>
-                      Spline interpolated PM2.5 to AQI hourly forecast progression
-                    </p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.2rem', gap: '1rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.65rem', flex: 1, minWidth: 0 }}>
+                    <div style={{ width: '34px', height: '34px', borderRadius: '0.65rem', backgroundColor: '#F0FDFA', border: '1px solid #CCFBF1', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <TrendingUp size={18} color="#0D9488" />
+                    </div>
+                    <div>
+                      <h3 style={{ fontSize: '1.1rem', fontWeight: '800', color: '#0F172A', margin: 0, letterSpacing: '-0.015em' }}>
+                        3-Day AQI Forecast Trajectory &amp; Severity Threshold Bands
+                      </h3>
+                      <p style={{ fontSize: '0.78rem', color: '#64748B', margin: '0.15rem 0 0 0', fontWeight: '500' }}>
+                        Continuous observed stream to 72-hour direct AI prediction spline mapped against WHO &amp; US-EPA severity bands
+                      </p>
+                    </div>
                   </div>
-
-                  <div style={{ display: 'flex', gap: '0.6rem' }}>
-                    <span style={{ fontSize: '0.72rem', fontWeight: '700', backgroundColor: '#F0F9FF', color: '#0284C7', padding: '0.3rem 0.65rem', borderRadius: '0.5rem', border: '1px solid #BAE6FD' }}>
-                      Model Confidence: {telemetry.confidenceScore !== null ? `${telemetry.confidenceScore}%` : "94%"}
+                  
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexShrink: 0 }}>
+                    <span style={{ fontSize: '0.72rem', fontWeight: '800', backgroundColor: '#F0FDFA', color: '#0D9488', padding: '0.35rem 0.75rem', borderRadius: '0.55rem', border: '1px solid #CCFBF1', whiteSpace: 'nowrap' }}>
+                      Confidence: {telemetry.confidenceScore !== null ? `${telemetry.confidenceScore}%` : '94%'}
                     </span>
                   </div>
                 </div>
 
-                <div style={{ height: '240px', width: '100%' }}>
-                  {isLoading ? (
-                    <div style={{ height: '100%' }} className="skeleton-shimmer"></div>
-                  ) : (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={telemetry.trendHistory}>
-                        <defs>
-                          <linearGradient id="colorAqiLight" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#0284C7" stopOpacity={0.3}/>
-                            <stop offset="95%" stopColor="#0284C7" stopOpacity={0.0}/>
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
-                        <XAxis dataKey="time" stroke="#94A3B8" fontSize={11} tickLine={false} />
-                        <YAxis stroke="#94A3B8" fontSize={11} tickLine={false} axisLine={false} />
-                        <Tooltip contentStyle={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.08)', color: '#0F172A', fontSize: '13px' }} />
-                        <ReferenceLine y={100} stroke="#F59E0B" strokeDasharray="4 4" label={{ value: "Moderate Threshold (100)", fill: "#F59E0B", fontSize: 10, position: 'top' }} />
-                        <Area type="monotone" dataKey="aqi" stroke="#0284C7" strokeWidth={3} fillOpacity={1} fill="url(#colorAqiLight)" />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  )}
-                </div>
-              </div>
-
-              {/* Bottom 2 Cards Grid: Atmospheric Features & Email Alert Subscription */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: '1.25rem' }}>
-                
-                {/* Live Atmospheric Parameters */}
-                <div style={{ 
-                  backgroundColor: '#FFFFFF', 
-                  padding: '1.5rem', 
-                  borderRadius: '1.25rem', 
-                  border: '1px solid #E2E8F0',
-                  boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.03)'
-                }}>
-                  <h3 style={{ fontSize: '1rem', fontWeight: '800', color: '#0F172A', margin: '0 0 1rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <Globe size={18} color="#0284C7" /> Live Environmental & Atmospheric Parameters
-                  </h3>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                    {isLoading ? (
-                      [1, 2, 3].map(i => <div key={i} style={{ height: '45px' }} className="skeleton-shimmer"></div>)
-                    ) : telemetry.hotspots && telemetry.hotspots.length > 0 ? (
-                      telemetry.hotspots.map((spot) => (
-                        <div key={spot.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem 0.9rem', backgroundColor: '#F8FAFC', borderRadius: '0.75rem', border: '1px solid #E2E8F0' }}>
-                          <div>
-                            <div style={{ fontSize: '0.85rem', fontWeight: '800', color: '#334155' }}>{spot.name}</div>
-                            <div style={{ fontSize: '0.68rem', color: '#64748B' }}>{spot.estimationType}</div>
-                          </div>
-                          <span style={{ fontSize: '0.85rem', fontWeight: '800', backgroundColor: '#EFF6FF', color: '#1E40AF', padding: '0.35rem 0.8rem', borderRadius: '0.5rem', border: '1px solid #BFDBFE' }}>
-                            {spot.aqi}
-                          </span>
-                        </div>
-                      ))
-                    ) : (
-                      <div style={{ fontSize: '0.8rem', color: '#64748B', fontStyle: 'italic', padding: '0.5rem' }}>
-                        Loading atmospheric feature store vectors...
-                      </div>
-                    )}
-                  </div>
+                {/* AQI Severity Bands Legend Bar */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1.2rem', padding: '0.6rem 0.9rem', backgroundColor: '#F8FAFC', borderRadius: '0.75rem', border: '1px solid #E2E8F0' }}>
+                  <span style={{ fontSize: '0.72rem', fontWeight: '800', color: '#64748B', display: 'flex', alignItems: 'center', marginRight: '0.5rem' }}>AQI SEVERITY SCALE:</span>
+                  <span style={{ fontSize: '0.7rem', fontWeight: '800', color: '#047857', backgroundColor: '#D1FAE5', padding: '0.2rem 0.55rem', borderRadius: '0.35rem', border: '1px solid #A7F3D0' }}>🟢 Good (0-50)</span>
+                  <span style={{ fontSize: '0.7rem', fontWeight: '800', color: '#B45309', backgroundColor: '#FEF3C7', padding: '0.2rem 0.55rem', borderRadius: '0.35rem', border: '1px solid #FDE68A' }}>🟡 Moderate (51-100)</span>
+                  <span style={{ fontSize: '0.7rem', fontWeight: '800', color: '#C2410C', backgroundColor: '#FFEDD5', padding: '0.2rem 0.55rem', borderRadius: '0.35rem', border: '1px solid #FED7AA' }}>🟠 Unhealthy Sensitive (101-150)</span>
+                  <span style={{ fontSize: '0.7rem', fontWeight: '800', color: '#B91C1C', backgroundColor: '#FEE2E2', padding: '0.2rem 0.55rem', borderRadius: '0.35rem', border: '1px solid #FCA5A5' }}>🔴 Unhealthy (151-200)</span>
+                  <span style={{ fontSize: '0.7rem', fontWeight: '800', color: '#6D28D9', backgroundColor: '#EDE9FE', padding: '0.2rem 0.55rem', borderRadius: '0.35rem', border: '1px solid #DDD6FE' }}>🟣 Very Unhealthy (201+)</span>
                 </div>
 
-                {/* Automated Hazardous Email Alert Subscription Form */}
-                <div style={{ 
-                  backgroundColor: '#FFFFFF', 
-                  padding: '1.5rem', 
-                  borderRadius: '1.25rem', 
-                  border: '1px solid #E2E8F0',
-                  boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.03)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  justify: 'space-between'
-                }}>
-                  <div>
-                    <h3 style={{ fontSize: '1rem', fontWeight: '800', color: '#0F172A', margin: '0 0 0.4rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <Mail size={18} color="#EA580C" /> Automated Hazardous AQI Email Alerts
-                    </h3>
-                    <p style={{ fontSize: '0.78rem', color: '#64748B', margin: '0 0 1rem 0', lineHeight: '1.4' }}>
-                      Subscribe your email address to receive immediate automated notifications when AQI is forecasted to breach sensitive health thresholds.
-                    </p>
-
-                    <form onSubmit={handleSubscribe} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                      <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <input 
-                          type="email" 
-                          placeholder="Enter email address..." 
-                          value={userEmail}
-                          onChange={(e) => setUserEmail(e.target.value)}
-                          style={{ 
-                            padding: '0.7rem 0.9rem', 
-                            borderRadius: '0.65rem', 
-                            border: '1px solid #CBD5E1', 
-                            fontSize: '0.85rem', 
-                            flex: 1,
-                            outline: 'none'
-                          }} 
-                        />
-                        <select 
-                          value={alertThreshold}
-                          onChange={(e) => setAlertThreshold(e.target.value)}
-                          style={{ 
-                            padding: '0.7rem 0.5rem', 
-                            borderRadius: '0.65rem', 
-                            border: '1px solid #CBD5E1', 
-                            fontSize: '0.8rem', 
-                            fontWeight: '700',
-                            backgroundColor: '#F8FAFC'
-                          }}
-                        >
-                          <option value="100">AQI &gt; 100</option>
-                          <option value="150">AQI &gt; 150</option>
-                          <option value="200">AQI &gt; 200</option>
-                        </select>
-                      </div>
-
-                      <motion.button 
-                        type="submit" 
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                        style={{ 
-                          display: 'flex', 
-                          alignItems: 'center', 
-                          justify: 'center', 
-                          gap: '0.5rem',
-                          backgroundColor: '#EA580C', 
-                          color: '#FFFFFF', 
-                          padding: '0.7rem', 
-                          borderRadius: '0.65rem', 
-                          border: 'none', 
-                          cursor: 'pointer', 
-                          fontWeight: '800', 
-                          fontSize: '0.85rem',
-                          boxShadow: '0 6px 14px -3px rgba(234, 88, 12, 0.4)'
-                        }}
-                      >
-                        <Send size={15} /> Activate Automated Email Alert
-                      </motion.button>
-                    </form>
-
-                    {subStatus && (
-                      <motion.div 
-                        initial={{ opacity: 0, y: 5 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        style={{ 
-                          marginTop: '0.75rem', 
-                          padding: '0.55rem 0.75rem', 
-                          borderRadius: '0.5rem', 
-                          fontSize: '0.75rem', 
-                          fontWeight: '700',
-                          backgroundColor: subStatus.type === 'success' ? '#DCFCE7' : '#FEE2E2',
-                          color: subStatus.type === 'success' ? '#166534' : '#991B1B'
-                        }}
-                      >
-                        {subStatus.text}
-                      </motion.div>
-                    )}
-                  </div>
-
-                  <div style={{ marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid #F1F5F9', fontSize: '0.72rem', color: '#64748B', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                    <ShieldAlert size={14} color="#EA580C" />
-                    <span>Native Email Alert Engine Active</span>
-                  </div>
-                </div>
-
-              </div>
-
-            </motion.div>
-          )}
-
-          {/* TAB 2: DAILY TRENDS */}
-          {activeNav === 'eda' && (
-            <motion.div 
-              key="eda"
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -15 }}
-              transition={{ duration: 0.3 }}
-              style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}
-            >
-              <div style={{ backgroundColor: '#FFFFFF', padding: '1.75rem', borderRadius: '1.25rem', border: '1px solid #E2E8F0', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.03)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-                  <div>
-                    <h3 style={{ fontSize: '1.1rem', fontWeight: '800', color: '#0F172A', margin: 0 }}>
-                      Daily Hourly Thermal Inversion Pattern & Exploratory Analytics
-                    </h3>
-                    <p style={{ fontSize: '0.8rem', color: '#64748B', margin: '0.25rem 0 0 0' }}>
-                      Statistical profiling derived from historical feature dataset ({edaData ? edaData.total_observations : '1,440'} observations)
-                    </p>
-                  </div>
-                  <button onClick={fetchEdaData} style={{ backgroundColor: '#F1F5F9', border: '1px solid #CBD5E1', padding: '0.45rem 0.9rem', borderRadius: '0.65rem', fontSize: '0.8rem', cursor: 'pointer', fontWeight: '700', color: '#334155' }}>
-                    Refresh EDA Engine
-                  </button>
-                </div>
-
-                <div style={{ height: '280px', width: '100%', marginBottom: '1.5rem' }}>
-                  <h4 style={{ fontSize: '0.88rem', fontWeight: '700', color: '#334155', marginBottom: '0.75rem' }}>
-                    Average Hourly PM2.5 Concentration (Thermal Inversion Peaks at 06:00 & 22:00)
-                  </h4>
+                <div style={{ height: '280px', width: '100%' }}>
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={edaData && edaData.hourly_diurnal_profile ? edaData.hourly_diurnal_profile : [
-                      { hour: '00:00', pm25: 14 }, { hour: '04:00', pm25: 18 }, { hour: '08:00', pm25: 24 },
-                      { hour: '12:00', pm25: 12 }, { hour: '16:00', pm25: 10 }, { hour: '20:00', pm25: 22 }
-                    ]}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
-                      <XAxis dataKey="hour" stroke="#94A3B8" fontSize={11} />
-                      <YAxis stroke="#94A3B8" fontSize={11} />
-                      <Tooltip contentStyle={{ backgroundColor: '#0F172A', borderRadius: '10px', color: '#FFF' }} />
-                      <Bar dataKey="pm25" fill="#0284C7" radius={[6, 6, 0, 0]} />
-                    </BarChart>
+                    <AreaChart data={telemetry.trendHistory} margin={{ top: 15, right: 20, left: 0, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="aqiColorGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#0D9488" stopOpacity={0.35}/>
+                          <stop offset="95%" stopColor="#0D9488" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+
+                      {/* AQI Severity Threshold Reference Bands */}
+                      <ReferenceArea y1={0} y2={50} fill="#10B981" fillOpacity={0.07} label={{ value: 'Good', position: 'insideTopLeft', fill: '#059669', fontSize: 10, fontWeight: 800 }} />
+                      <ReferenceArea y1={50} y2={100} fill="#F59E0B" fillOpacity={0.07} label={{ value: 'Moderate', position: 'insideTopLeft', fill: '#D97706', fontSize: 10, fontWeight: 800 }} />
+                      <ReferenceArea y1={100} y2={150} fill="#F97316" fillOpacity={0.08} label={{ value: 'Unhealthy Sensitive', position: 'insideTopLeft', fill: '#EA580C', fontSize: 10, fontWeight: 800 }} />
+                      <ReferenceArea y1={150} y2={200} fill="#EF4444" fillOpacity={0.09} label={{ value: 'Unhealthy', position: 'insideTopLeft', fill: '#DC2626', fontSize: 10, fontWeight: 800 }} />
+                      <ReferenceArea y1={200} y2={300} fill="#8B5CF6" fillOpacity={0.10} label={{ value: 'Very Unhealthy', position: 'insideTopLeft', fill: '#7C3AED', fontSize: 10, fontWeight: 800 }} />
+
+                      {/* Horizontal Threshold Boundary Lines */}
+                      <ReferenceLine y={50} stroke="#10B981" strokeDasharray="3 3" strokeOpacity={0.5} />
+                      <ReferenceLine y={100} stroke="#F59E0B" strokeDasharray="3 3" strokeOpacity={0.5} />
+                      <ReferenceLine y={150} stroke="#F97316" strokeDasharray="3 3" strokeOpacity={0.5} />
+                      <ReferenceLine y={200} stroke="#EF4444" strokeDasharray="3 3" strokeOpacity={0.5} />
+
+                      {/* Vertical Marker Separating Past/Observed from AI Forecast */}
+                      <ReferenceLine x="Now (Observed)" stroke="#0D9488" strokeWidth={2} strokeDasharray="4 4" label={{ value: 'Live Telemetry Boundary', position: 'top', fill: '#0D9488', fontSize: 10, fontWeight: 800 }} />
+
+                      <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
+                      <XAxis dataKey="time" stroke="#64748B" fontSize={11} tickLine={false} fontWeight={600} />
+                      <YAxis stroke="#64748B" fontSize={11} tickLine={false} domain={[0, 'dataMax + 25']} fontWeight={600} />
+                      
+                      <Tooltip content={({ active, payload, label }) => {
+                        if (active && payload && payload.length) {
+                          const data = payload[0].payload;
+                          const aqiVal = data.aqi;
+                          let cat = data.category || "Moderate";
+                          let catColor = data.categoryColor || "#F59E0B";
+                          if (aqiVal <= 50) { cat = "Good"; catColor = "#10B981"; }
+                          else if (aqiVal <= 100) { cat = "Moderate"; catColor = "#F59E0B"; }
+                          else if (aqiVal <= 150) { cat = "Unhealthy Sensitive"; catColor = "#F97316"; }
+                          else if (aqiVal <= 200) { cat = "Unhealthy"; catColor = "#EF4444"; }
+                          else { cat = "Very Unhealthy"; catColor = "#8B5CF6"; }
+
+                          return (
+                            <div style={{
+                              backgroundColor: '#FFFFFF',
+                              border: `1.5px solid ${catColor}`,
+                              borderRadius: '0.85rem',
+                              padding: '0.75rem 1rem',
+                              boxShadow: '0 4px 20px rgba(15, 23, 42, 0.12)',
+                              fontSize: '0.82rem'
+                            }}>
+                              <div style={{ color: '#64748B', fontWeight: '700', marginBottom: '0.35rem' }}>
+                                ⏱️ {label}
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.25rem' }}>
+                                <span style={{ fontSize: '1.15rem', fontWeight: '900', color: '#0F172A' }}>
+                                  AQI: {aqiVal}
+                                </span>
+                                <span style={{
+                                  backgroundColor: `${catColor}1A`,
+                                  color: catColor,
+                                  fontWeight: '800',
+                                  fontSize: '0.7rem',
+                                  padding: '0.2rem 0.55rem',
+                                  borderRadius: '0.4rem',
+                                  border: `1px solid ${catColor}40`
+                                }}>
+                                  {cat}
+                                </span>
+                              </div>
+                              {data.pm25 && (
+                                <div style={{ color: '#64748B', fontSize: '0.76rem', fontWeight: '600' }}>
+                                  PM2.5: {data.pm25} µg/m³
+                                </div>
+                              )}
+                            </div>
+                          );
+                        }
+                        return null;
+                      }} />
+
+                      <Area type="monotone" dataKey="aqi" stroke="#0D9488" strokeWidth={3.5} fillOpacity={1} fill="url(#aqiColorGrad)" dot={{ r: 4, fill: '#0D9488', stroke: '#FFFFFF', strokeWidth: 2 }} activeDot={{ r: 7, fill: '#0284C7', stroke: '#FFFFFF', strokeWidth: 3 }} />
+                    </AreaChart>
                   </ResponsiveContainer>
                 </div>
+              </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
-                  <div style={{ backgroundColor: '#F8FAFC', padding: '1.25rem', borderRadius: '1rem', border: '1px solid #E2E8F0' }}>
-                    <h4 style={{ fontSize: '0.88rem', fontWeight: '800', color: '#0F172A', margin: '0 0 0.75rem 0' }}>
-                      PM2.5 Target Feature Correlation Matrix
-                    </h4>
-                    {Object.entries(edaData && edaData.target_correlations ? edaData.target_correlations : {
-                      "pm10": 0.8392, "european_aqi": 0.5047, "nitrogen_dioxide": 0.4600, "wind_speed_10m": 0.0856, "temperature_2m": -0.0978
-                    }).slice(0, 5).map(([feat, corr], idx) => (
-                      <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', padding: '0.4rem 0', borderBottom: '1px solid #E2E8F0' }}>
-                        <span style={{ color: '#334155', fontWeight: '600' }}>{feat}</span>
-                        <span style={{ color: corr > 0 ? '#0284C7' : '#EF4444', fontWeight: '800' }}>{corr > 0 ? `+${corr}` : corr}</span>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div style={{ backgroundColor: '#F8FAFC', padding: '1.25rem', borderRadius: '1rem', border: '1px solid #E2E8F0' }}>
-                    <h4 style={{ fontSize: '0.88rem', fontWeight: '800', color: '#0F172A', margin: '0 0 0.75rem 0' }}>
-                      Outlier Threshold Bounds (99th Percentile Spikes)
-                    </h4>
-                    {Object.entries(edaData && edaData.outlier_thresholds ? edaData.outlier_thresholds : {
-                      "pm10": { max: 150.9, p99: 113.84 },
-                      "pm2_5": { max: 95.0, p99: 74.06 }
-                    }).map(([feat, vals], idx) => (
-                      <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', padding: '0.4rem 0', borderBottom: '1px solid #E2E8F0' }}>
-                        <span style={{ color: '#334155', fontWeight: '600' }}>{feat.toUpperCase()}</span>
-                        <span style={{ color: '#EA580C', fontWeight: '800' }}>P99: {vals.p99} | Max: {vals.max}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
+              {/* Automated Email Alert Dispatcher Section */}
+              <div id="email-alert-section">
+                <EmailAlertDispatcher />
               </div>
             </motion.div>
           )}
 
-          {/* TAB 3: MODEL FACTORS */}
+          {/* TAB 2: DAILY TRENDS (EDA) */}
+          {activeNav === 'trends' && (
+            <motion.div 
+              key="trends"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.25 }}
+              style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}
+            >
+              {/* Full Pearson Feature Correlation Suite */}
+              <CorrelationHeatmap />
+
+              {/* Diurnal Hourly Profile Spline */}
+              {edaData && edaData.hourly_diurnal_profile && (
+                <div style={{ backgroundColor: '#FFFFFF', borderRadius: '1.25rem', padding: '1.6rem', border: '1px solid #E2E8F0', boxShadow: '0 4px 20px -2px rgba(15,23,42,0.04)' }}>
+                  <div style={{ marginBottom: '1.2rem' }}>
+                    <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '800', color: '#0F172A' }}>
+                      🕒 24-Hour Daily Pollution Profile (PM2.5 & European AQI)
+                    </h3>
+                    <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.78rem', color: '#64748B' }}>
+                      24-hour mean atmospheric concentration pattern extracted from historical observation window
+                    </p>
+                  </div>
+                  <div style={{ height: '260px', width: '100%' }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={
+                        Array.isArray(edaData.hourly_diurnal_profile)
+                          ? edaData.hourly_diurnal_profile
+                          : Object.entries(edaData.hourly_diurnal_profile.pm2_5 || {}).map(([hr, val]) => ({
+                              hour: `${hr}:00`,
+                              pm25: val,
+                              aqi: edaData.hourly_diurnal_profile.european_aqi ? edaData.hourly_diurnal_profile.european_aqi[hr] : val
+                            }))
+                      }>
+                        <defs>
+                          <linearGradient id="diurnalGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#0284C7" stopOpacity={0.35}/>
+                            <stop offset="95%" stopColor="#0284C7" stopOpacity={0}/>
+                          </linearGradient>
+                          <linearGradient id="aqiDiurnalGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#0D9488" stopOpacity={0.25}/>
+                            <stop offset="95%" stopColor="#0D9488" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
+                        <XAxis dataKey="hour" stroke="#64748B" fontSize={11} tickLine={false} />
+                        <YAxis stroke="#64748B" fontSize={11} tickLine={false} axisLine={false} />
+                        <Tooltip contentStyle={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', borderRadius: '0.75rem', boxShadow: '0 4px 16px rgba(15,23,42,0.08)' }} />
+                        <Area type="monotone" dataKey="pm25" stroke="#0284C7" strokeWidth={3} fill="url(#diurnalGrad)" name="Mean PM2.5 (µg/m³)" dot={{ r: 3, fill: '#0284C7' }} activeDot={{ r: 6 }} />
+                        <Area type="monotone" dataKey="aqi" stroke="#0D9488" strokeWidth={2} fill="url(#aqiDiurnalGrad)" name="European AQI" strokeDasharray="4 4" dot={false} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          )}
+
+          {/* TAB 3: MODEL FACTORS (SHAP) */}
           {activeNav === 'shap' && (
             <motion.div 
               key="shap"
-              initial={{ opacity: 0, y: 15 }}
+              initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -15 }}
-              transition={{ duration: 0.3 }}
-              style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.25 }}
+              style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}
             >
-              <div style={{ backgroundColor: '#FFFFFF', padding: '1.75rem', borderRadius: '1.25rem', border: '1px solid #E2E8F0', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.03)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                  <div>
-                    <h3 style={{ fontSize: '1.1rem', fontWeight: '800', color: '#0F172A', margin: 0, display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                      <Sparkles size={20} color="#7C3AED" /> AI Model Factors & Feature Attribution
-                    </h3>
-                    <p style={{ fontSize: '0.8rem', color: '#64748B', margin: '0.25rem 0 0 0' }}>
-                      Shapley Feature Attribution for LightGBM models: f(x) = E[f(x)] + ∑ φᵢ
-                    </p>
-                  </div>
-                  <span style={{ fontSize: '0.75rem', fontWeight: '800', backgroundColor: '#F3E8FF', color: '#7C3AED', padding: '0.35rem 0.85rem', borderRadius: '0.5rem', border: '1px solid #E9D5FF' }}>
-                    Feature Verified
-                  </span>
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1.5rem' }}>
-                  {(telemetry.shapExplanations.length > 0 ? telemetry.shapExplanations : [
-                    { feature: "pm2_5_lag_1h", importance: 0.4215 },
-                    { feature: "pm2_5_rolling_24h_mean", importance: 0.2840 },
-                    { feature: "wind_speed_10m", importance: 0.1512 },
-                    { feature: "temperature_2m", importance: 0.0891 },
-                    { feature: "cos_hour", importance: 0.0542 }
-                  ]).map((item, idx) => {
-                    const maxVal = Math.max(...(telemetry.shapExplanations.length > 0 ? telemetry.shapExplanations.map(s => s.importance) : [0.4215]), 0.001);
-                    const pct = Math.min(100, Math.round((item.importance / maxVal) * 100));
-                    return (
-                      <div key={idx} style={{ backgroundColor: '#F8FAFC', padding: '1.1rem 1.35rem', borderRadius: '0.9rem', border: '1px solid #E2E8F0' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.88rem', fontWeight: '800', marginBottom: '0.6rem' }}>
-                          <span style={{ color: '#0F172A' }}>{item.feature}</span>
-                          <span style={{ color: '#7C3AED' }}>+{item.importance} Contribution</span>
-                        </div>
-                        <div style={{ height: '12px', width: '100%', backgroundColor: '#E2E8F0', borderRadius: '999px', overflow: 'hidden' }}>
-                          <motion.div 
-                            initial={{ width: 0 }}
-                            animate={{ width: `${pct}%` }}
-                            transition={{ duration: 0.8, delay: idx * 0.1 }}
-                            style={{ height: '100%', background: 'linear-gradient(90deg, #7C3AED 0%, #A855F7 100%)', borderRadius: '999px' }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div style={{ backgroundColor: '#F8FAFC', padding: '1.25rem', borderRadius: '1rem', border: '1px solid #E2E8F0', fontSize: '0.8rem', color: '#475569', lineHeight: '1.5' }}>
-                  <div style={{ fontWeight: '800', color: '#0F172A', marginBottom: '0.3rem' }}>
-                    📖 Mathematical Attribution (Shapley Values):
-                  </div>
-                  Calculates the marginal contribution of feature <i>i</i> across all possible feature subsets <i>S</i>. 
-                  In tree models (LightGBM/XGBoost), `shap.TreeExplainer` traverses tree paths in O(TLD²) complexity to produce mathematically consistent global feature attributions.
-                </div>
-              </div>
+              {/* Multi-Horizon Directional SHAP Waterfall */}
+              <ShapWaterfall 
+                contributions={telemetry.localShapContributions} 
+                shapExplanations={telemetry.shapExplanations}
+                localShapByHorizon={telemetry.localShapByHorizon}
+              />
             </motion.div>
           )}
 
-          {/* TAB 4: ATMOSPHERIC FEATURES */}
+          {/* TAB 4: MULTI-MODEL TOURNAMENT */}
+          {activeNav === 'tournament' && (
+            <motion.div 
+              key="tournament"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.25 }}
+              style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}
+            >
+              <TournamentChart />
+            </motion.div>
+          )}
+
+          {/* TAB 5: ATMOSPHERIC FEATURES & FEATURE STORE STREAM */}
           {activeNav === 'regional' && (
             <motion.div 
               key="regional"
-              initial={{ opacity: 0, y: 15 }}
+              initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -15 }}
-              transition={{ duration: 0.3 }}
-              style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.25 }}
+              style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}
             >
-              <div style={{ backgroundColor: '#FFFFFF', padding: '1.75rem', borderRadius: '1.25rem', border: '1px solid #E2E8F0', boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.03)' }}>
-                <h3 style={{ fontSize: '1.1rem', fontWeight: '800', color: '#0F172A', margin: '0 0 1rem 0', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                  <Globe size={20} color="#0284C7" /> Live Environmental & Atmospheric Parameters
-                </h3>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.25rem' }}>
-                  {isLoading ? (
-                    [1, 2, 3].map(i => <div key={i} style={{ height: '140px' }} className="skeleton-shimmer"></div>)
-                  ) : (telemetry?.hotspots && telemetry.hotspots.length > 0) ? (
-                    telemetry.hotspots.map((spot, i) => (
-                      <div key={spot.id || i} style={{ backgroundColor: '#F8FAFC', padding: '1.25rem', borderRadius: '1rem', border: '1px solid #E2E8F0' }}>
-                        <div style={{ fontSize: '0.8rem', fontWeight: '800', color: spot.color || '#0284C7' }}>SENSING STATION 0{i+1}</div>
-                        <div style={{ fontSize: '1.1rem', fontWeight: '800', color: '#0F172A', margin: '0.3rem 0' }}>{spot.name}</div>
-                        <div style={{ fontSize: '1.75rem', fontWeight: '900', color: spot.color || '#0284C7', margin: '0.3rem 0' }}>{spot.aqi}</div>
-                        <div style={{ fontSize: '0.75rem', color: '#64748B' }}>{spot.estimationType}</div>
-                      </div>
-                    ))
-                  ) : (
-                    <div style={{ fontSize: '0.85rem', color: '#64748B', fontStyle: 'italic', gridColumn: 'span 3', padding: '1rem' }}>
-                      Connecting to live Hopsworks Feature Store stream...
+              <div style={{ backgroundColor: '#FFFFFF', padding: '1.75rem', borderRadius: '1.25rem', border: '1px solid #E2E8F0', boxShadow: '0 4px 20px -2px rgba(15,23,42,0.04)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.4rem', flexWrap: 'wrap', gap: '0.8rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                    <Globe size={22} color="#0D9488" />
+                    <div>
+                      <h3 style={{ fontSize: '1.1rem', fontWeight: '800', color: '#0F172A', margin: 0 }}>
+                        Multi-Variate Atmospheric Vector & Feature Store Telemetry
+                      </h3>
+                      <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.78rem', color: '#64748B' }}>
+                        Real-time 8-parameter observation vector stream from Open-Meteo & Hopsworks Feature Store V2
+                      </p>
                     </div>
-                  )}
+                  </div>
+                  <span style={{ fontSize: '0.74rem', fontWeight: '800', backgroundColor: '#F0FDFA', color: '#0D9488', padding: '0.35rem 0.8rem', borderRadius: '0.5rem', border: '1px solid #CCFBF1', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <span style={{ width: '6px', height: '6px', backgroundColor: '#0D9488', borderRadius: '50%' }} />
+                    8/8 FEATURES ACTIVE
+                  </span>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1.1rem' }}>
+                  {telemetry.hotspots.map((station, idx) => (
+                    <div key={station.id || idx} style={{
+                      backgroundColor: '#FFFFFF',
+                      padding: '1.25rem',
+                      borderRadius: '0.9rem',
+                      border: '1px solid #E2E8F0',
+                      boxShadow: '0 2px 8px rgba(15,23,42,0.02)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifySpace: 'space-between'
+                    }}>
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '0.66rem', fontWeight: '800', color: '#0D9488', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                            FEATURE 0{idx + 1}
+                          </span>
+                          <span style={{ fontSize: '0.64rem', fontWeight: '800', backgroundColor: '#F1F5F9', color: '#475569', padding: '0.15rem 0.45rem', borderRadius: '0.3rem' }}>
+                            {station.category || 'Environmental'}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '0.95rem', fontWeight: '800', color: '#0F172A', margin: '0.4rem 0 0.2rem 0', lineHeight: 1.25 }}>
+                          {station.name}
+                        </div>
+                      </div>
+
+                      <div style={{ margin: '0.8rem 0 0.4rem 0' }}>
+                        <div style={{ fontSize: '1.6rem', fontWeight: '900', color: station.color || '#0284C7', lineHeight: 1 }}>
+                          {station.aqi}
+                        </div>
+                      </div>
+
+                      <div style={{ fontSize: '0.70rem', color: '#64748B', borderTop: '1px solid #F1F5F9', paddingTop: '0.5rem', marginTop: '0.4rem' }}>
+                        {station.estimationType}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             </motion.div>
           )}
 
         </AnimatePresence>
-
       </main>
-
     </div>
   );
 }

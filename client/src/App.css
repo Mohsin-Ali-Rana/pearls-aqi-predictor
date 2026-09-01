@@ -15,3 +15,41 @@
   animation: shimmer 1.5s infinite;
   border-radius: 0.75rem;
 }
+
+@keyframes targetPulse {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(13, 148, 136, 0.7);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 8px rgba(13, 148, 136, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(13, 148, 136, 0);
+  }
+}
+
+.target-badge-pulse {
+  animation: targetPulse 2s infinite ease-in-out;
+}
+
+@keyframes gradientGlow {
+  0% {
+    border-color: rgba(13, 148, 136, 0.4);
+    box-shadow: 0 4px 14px rgba(13, 148, 136, 0.12);
+  }
+  50% {
+    border-color: rgba(13, 148, 136, 0.8);
+    box-shadow: 0 4px 20px rgba(13, 148, 136, 0.25);
+  }
+  100% {
+    border-color: rgba(13, 148, 136, 0.4);
+    box-shadow: 0 4px 14px rgba(13, 148, 136, 0.12);
+  }
+}
+
+.target-glow-card {
+  animation: gradientGlow 3s infinite ease-in-out;
+}
