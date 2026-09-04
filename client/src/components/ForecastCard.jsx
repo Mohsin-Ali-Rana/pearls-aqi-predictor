@@ -35,7 +35,7 @@ export default function ForecastCard({ forecast, isLoading }) {
   const humidityNum = safeNumber(fc.humidity);
   const humidity = !isCardLoading && humidityNum !== null ? `${humidityNum.toFixed(0)}%` : '--%';
 
-  const windNum = safeNumber(fc.windSpeed);
+  const windNum = safeNumber(fc.windSpeed) ?? safeNumber(fc.wind_speed);
   const wind = !isCardLoading && windNum !== null ? `${windNum.toFixed(1)} km/h` : '-- km/h';
 
   const pm25Num = safeNumber(fc.pm25) ?? safeNumber(fc.predicted_pm2_5);
@@ -185,7 +185,7 @@ export default function ForecastCard({ forecast, isLoading }) {
                 <Activity size={12} color="#059669" style={{ margin: 0, display: 'block' }} />
               </div>
               <span style={{ fontSize: '0.62rem', fontWeight: '800', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.03em', lineHeight: 1 }}>
-                Confidence
+                PRECISION
               </span>
             </div>
             <div style={{ fontSize: '0.78rem', fontWeight: '800', color: '#0F172A', whiteSpace: 'nowrap', paddingLeft: '0.1rem' }}>

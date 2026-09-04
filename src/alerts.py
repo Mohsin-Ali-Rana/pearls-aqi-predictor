@@ -355,3 +355,109 @@ def send_welcome_email(recipient_email: str, threshold: int = 100, frequency: st
     except Exception as e:
         print(f"[Welcome Email] SMTP Error sending to {recipient_email}: {e}")
         return {"status": "error", "reason": str(e)}
+
+
+def build_unsubscribe_html_email(recipient_email: str, location_name: str) -> str:
+    return f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Unsubscribed - PEARLS AQI Intelligence</title>
+</head>
+<body style="margin:0; padding:0; background-color:#f1f5f9; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color:#0f172a;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#f1f5f9; padding:40px 10px;">
+        <tr>
+            <td align="center">
+                <table role="presentation" width="100%" style="max-width:600px; background-color:#ffffff; border-radius:12px; overflow:hidden; border:1px solid #e2e8f0; box-shadow:0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+                    
+                    <!-- Header -->
+                    <tr>
+                        <td style="background-color:#475569; padding:32px 36px; text-align:left; border-bottom:3px solid #334155;">
+                            <div style="font-size:11px; font-weight:800; color:#cbd5e1; text-transform:uppercase; letter-spacing:2px; margin-bottom:6px;">
+                                PEARLS AQI ATMOSPHERIC INTELLIGENCE
+                            </div>
+                            <h1 style="font-size:22px; font-weight:700; color:#ffffff; margin:0 0 6px 0; letter-spacing:-0.5px;">
+                                Unsubscription Confirmed
+                            </h1>
+                            <div style="font-size:13px; color:#94a3b8; margin:0;">
+                                Region: {location_name}
+                            </div>
+                        </td>
+                    </tr>
+
+                    <!-- Body Content -->
+                    <tr>
+                        <td style="padding:36px; background-color:#ffffff;">
+                            <p style="font-size:15px; line-height:1.6; color:#334155; margin-top:0; margin-bottom:20px;">
+                                Your email address (<strong>{recipient_email}</strong>) has been successfully unsubscribed from the PEARLS AQI Early Warning Network.
+                            </p>
+                            <p style="font-size:14px; line-height:1.6; color:#64748b; margin-bottom:24px;">
+                                You will no longer receive automated hazardous AQI notifications or threshold advisories for {location_name}.
+                            </p>
+                            <div style="background-color:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:16px; font-size:13px; color:#475569; line-height:1.5;">
+                                If you did not request this unsubscription or wish to re-enable alerts in the future, you can resubscribe anytime directly through the PEARLS AQI Command Center dashboard.
+                            </div>
+                        </td>
+                    </tr>
+
+                    <!-- Footer -->
+                    <tr>
+                        <td style="background-color:#f8fafc; padding:24px 36px; border-top:1px solid #e2e8f0; text-align:left;">
+                            <div style="font-size:13px; font-weight:600; color:#334155; margin-bottom:4px;">
+                                PEARLS MLOps Engineering Team
+                            </div>
+                            <div style="font-size:12px; color:#64748b; line-height:1.5;">
+                                Central Atmospheric Observation Station &bull; Feature Store Integration
+                            </div>
+                        </td>
+                    </tr>
+
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>"""
+
+
+def send_unsubscribe_email(recipient_email: str) -> dict:
+    """
+    Sends an immediate unsubscription confirmation email to the user.
+    """
+    if not (SMTP_HOST and SMTP_USER and SMTP_PASSWORD):
+        print(f"[Unsubscribe Email] SMTP credentials unconfigured in .env. Dry-run mode for {recipient_email}.")
+        return {"status": "dry_run", "message": "SMTP credentials unconfigured."}
+
+    subject = f"Unsubscribed Confirmed: PEARLS AQI Automated Alert Dispatcher"
+    
+    plain_body = (
+        f"PEARLS AQI Intelligence System Advisory\n\n"
+        f"Your email ({recipient_email}) has been successfully unsubscribed from the PEARLS AQI alert system for {LOCATION_NAME}.\n"
+        f"You will no longer receive automated notification dispatches.\n\n"
+        f"Best regards,\nPEARLS MLOps Engineering Team"
+    )
+
+    html_body = build_unsubscribe_html_email(recipient_email, LOCATION_NAME)
+
+    try:
+        server = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=10.0)
+        server.starttls()
+        server.login(SMTP_USER, SMTP_PASSWORD)
+
+        sender_header = formataddr((SMTP_SENDER_NAME, SMTP_USER)) if SMTP_USER else SMTP_SENDER_NAME
+        msg = MIMEMultipart("alternative")
+        msg["From"] = sender_header
+        msg["To"] = recipient_email
+        msg["Subject"] = subject
+
+        msg.attach(MIMEText(plain_body, "plain"))
+        msg.attach(MIMEText(html_body, "html"))
+
+        server.sendmail(SMTP_USER or sender_header, [recipient_email], msg.as_string())
+        server.quit()
+        print(f"[Unsubscribe Email] Dispatched unsubscription confirmation email to {recipient_email}!")
+        return {"status": "success", "message": f"Unsubscribe confirmation email sent to {recipient_email}"}
+    except Exception as e:
+        print(f"[Unsubscribe Email] SMTP Error sending to {recipient_email}: {e}")
+        return {"status": "error", "reason": str(e)}

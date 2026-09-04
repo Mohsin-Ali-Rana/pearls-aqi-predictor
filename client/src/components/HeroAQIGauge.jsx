@@ -12,9 +12,11 @@ export default function HeroAQIGauge({ telemetry, isLoading }) {
   const aqiStatus = isDataLoading ? 'LOADING TELEMETRY...' : (telemetry.aqiStatus || 'Good');
   
   // Dynamic Real Timestamp & Delta Metrics from Live Backend Telemetry
-  const formattedTime = (telemetry && telemetry.last_updated) 
-    ? telemetry.last_updated 
-    : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const formattedTime = (telemetry && (telemetry.last_updated || telemetry.lastUpdated))
+    ? (telemetry.last_updated || telemetry.lastUpdated) 
+    : new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) + 
+      ' at ' + 
+      new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' PKT';
   const deltaPct = telemetry.aqi_delta_pct !== undefined ? telemetry.aqi_delta_pct : 0.0;
   
   // Dynamic Weather Covariates from Live Backend Telemetry
@@ -225,45 +227,51 @@ export default function HeroAQIGauge({ telemetry, isLoading }) {
               )}
             </div>
 
-            {/* Row 2: Exact Clock Timestamp */}
+            {/* Row 2: Exact Clock & Date Timestamp */}
             <div style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '0.4rem',
+              gap: '0.45rem',
               color: '#64748B',
               fontSize: '0.78rem',
               fontWeight: '500',
-              paddingTop: '0.35rem',
+              paddingTop: '0.45rem',
               borderTop: '1px solid #F8FAFC'
             }}>
-              <Clock size={13} color="#0D9488" />
-              <span>Updated <strong style={{ color: '#0F172A', fontWeight: '700' }}>{formattedTime}</strong></span>
+              <Clock size={14} color="#0D9488" style={{ flexShrink: 0 }} />
+              <span>
+                Last updated: <strong style={{ color: '#0F172A', fontWeight: '700', marginLeft: '0.25rem' }}>{formattedTime}</strong>
+              </span>
             </div>
 
-            {/* Row 3: vs last updated (Left) & Delta % Badge (Right) */}
+            {/* Row 3: vs last observation delta % badge */}
             <div style={{
               display: 'flex',
-              justify: 'space-between',
+              justifyContent: 'space-between',
               alignItems: 'center',
               paddingTop: '0.45rem',
               borderTop: '1px solid #F1F5F9',
-              fontSize: '0.78rem'
+              fontSize: '0.78rem',
+              gap: '0.75rem'
             }}>
-              <span style={{ color: '#64748B', fontWeight: '600', fontSize: '0.76rem' }}>vs last updated</span>
+              <span style={{ color: '#64748B', fontWeight: '600', fontSize: '0.76rem', whiteSpace: 'nowrap' }}>
+                vs last observation
+              </span>
               {isDataLoading ? (
-                <div style={{ width: '48px', height: '18px' }} className="skeleton-shimmer" />
+                <div style={{ width: '56px', height: '20px' }} className="skeleton-shimmer" />
               ) : (
                 <span style={{
                   fontWeight: '800',
                   fontSize: '0.75rem',
                   color: deltaPct > 0 ? '#DC2626' : (deltaPct < 0 ? '#0D9488' : '#475569'),
                   backgroundColor: deltaPct > 0 ? '#FEE2E2' : (deltaPct < 0 ? '#F0FDFA' : '#F1F5F9'),
-                  padding: '0.18rem 0.55rem',
+                  padding: '0.2rem 0.65rem',
                   borderRadius: '0.45rem',
                   border: `1px solid ${deltaPct > 0 ? '#FCA5A5' : (deltaPct < 0 ? '#CCFBF1' : '#E2E8F0')}`,
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: '0.2rem'
+                  gap: '0.3rem',
+                  whiteSpace: 'nowrap'
                 }}>
                   {deltaPct > 0 ? (
                     <>

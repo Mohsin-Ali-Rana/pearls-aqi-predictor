@@ -53,11 +53,11 @@ export default function App() {
     }
   });
 
-  const fetchTelemetryData = async (showSyncAnim = false) => {
+  const fetchTelemetryData = async (showSyncAnim = false, isBackground = false) => {
     if (showSyncAnim) {
       setIsSyncing(true);
       setSyncProgress(15);
-    } else {
+    } else if (!isBackground) {
       setIsLoading(true);
     }
 
@@ -100,7 +100,7 @@ export default function App() {
         setSyncProgress(0);
         if (interval) clearInterval(interval);
       }, 700);
-    } else {
+    } else if (!isBackground) {
       setTimeout(() => {
         setIsLoading(false);
         setIsSyncing(false);
@@ -123,8 +123,15 @@ export default function App() {
   };
 
   useEffect(() => {
-    fetchTelemetryData();
+    fetchTelemetryData(false, false);
     fetchEdaData();
+
+    // Quiet background polling every 30 seconds
+    const pollTimer = setInterval(() => {
+      fetchTelemetryData(false, true);
+    }, 30000);
+
+    return () => clearInterval(pollTimer);
   }, []);
 
   const scrollToAlertDispatcher = () => {

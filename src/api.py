@@ -112,6 +112,8 @@ class PersistenceLift(BaseModel):
     day3_rmse: float
     status: str
 
+from datetime import datetime
+
 class TelemetryResponse(BaseModel):
     city: str
     coordinates: str = "33.77° N, 72.75° E"
@@ -120,6 +122,7 @@ class TelemetryResponse(BaseModel):
     aqiStatus: str
     aqiColor: str
     aqiDelta: str
+    aqi_delta_pct: Optional[float] = 0.0
     pm25: float
     whoStatus: str
     healthAdvisory: str
@@ -127,6 +130,7 @@ class TelemetryResponse(BaseModel):
     confidenceScore: int
     modelName: str
     featureStoreStatus: str
+    last_updated: Optional[str] = None
     forecasts: List[ForecastHorizon]
     trendHistory: List[TrendPoint]
     hotspots: List[HotspotStation]
@@ -215,6 +219,7 @@ def compute_telemetry_response(force_reload: bool = False) -> TelemetryResponse:
         aqiStatus=get_aqi_status(current_aqi),
         aqiColor=get_aqi_color(current_aqi),
         aqiDelta=aqi_delta_str,
+        aqi_delta_pct=float(ml_output.get("aqi_delta_pct", 0.0)),
         pm25=float(current_pm25),
         whoStatus=who_status_str,
         healthAdvisory=advisory_title,
@@ -222,6 +227,7 @@ def compute_telemetry_response(force_reload: bool = False) -> TelemetryResponse:
         confidenceScore=dynamic_confidence,
         modelName=f"{ml_output.get('model_name', 'aqi_pm25_predictor')} v{ml_output.get('model_version', 28)}",
         featureStoreStatus=feature_store_status,
+        last_updated=datetime.now().strftime("%b %d, %Y at %I:%M %p PKT"),
         forecasts=[
             ForecastHorizon(
                 horizon="24H",
@@ -387,6 +393,13 @@ async def _background_telemetry_worker():
 @app.on_event("startup")
 async def startup_event():
     """Starts the background telemetry refresher thread on FastAPI boot."""
+    try:
+        response = await asyncio.to_thread(compute_telemetry_response)
+        _TELEMETRY_CACHE["payload"] = response
+        _TELEMETRY_CACHE["timestamp"] = time.time()
+        print("⚡ Telemetry cache pre-warmed on startup.")
+    except Exception as e:
+        print(f"Startup pre-warm note: {e}")
     asyncio.create_task(_background_telemetry_worker())
 
 
@@ -546,6 +559,59 @@ def subscribe_user_email(req: SubscriptionRequest):
     }
 
 
+@app.post("/api/unsubscribe")
+def unsubscribe_user_email(req: SubscriptionRequest):
+    """Unsubscribes a user email from hazardous AQI threshold alerts."""
+    import os, json
+    email = req.email.strip().lower()
+    if "@" not in email or "." not in email:
+        raise HTTPException(status_code=400, detail="Invalid email format.")
+
+    sub_file = os.path.join("data", "subscribers.json")
+    if not os.path.exists(sub_file):
+        raise HTTPException(status_code=404, detail="No active subscribers found.")
+
+    try:
+        with open(sub_file, "r") as f:
+            subscribers = json.load(f)
+    except Exception:
+        subscribers = []
+
+    # Find and remove subscriber
+    updated_subscribers = []
+    found = False
+
+    for sub in subscribers:
+        sub_email = sub if isinstance(sub, str) else sub.get("email")
+        if sub_email == email:
+            found = True
+        else:
+            updated_subscribers.append(sub)
+
+    if not found:
+        raise HTTPException(
+            status_code=404, 
+            detail=f"The email address '{email}' was not found in our active subscriber list."
+        )
+
+    with open(sub_file, "w") as f:
+        json.dump(updated_subscribers, f, indent=2)
+
+    # Trigger immediate Unsubscribe Confirmation Email
+    try:
+        from alerts import send_unsubscribe_email
+    except ImportError:
+        from src.alerts import send_unsubscribe_email
+    
+    unsub_res = send_unsubscribe_email(email)
+
+    return {
+        "status": "success",
+        "message": f"Successfully unsubscribed {email} from AQI hazard alert dispatches.",
+        "email_delivery": unsub_res
+    }
+
+
 @app.get("/api/test-email")
 def test_email_dispatch(email: str = "test@example.com"):
     """Instant diagnostic endpoint to test SMTP settings from .env file."""
@@ -554,4 +620,4 @@ def test_email_dispatch(email: str = "test@example.com"):
 
 
 if __name__ == "__main__":
-    uvicorn.run("src.api:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("src.api:app", host="0.0.0.0", port=8000, reload=False)
