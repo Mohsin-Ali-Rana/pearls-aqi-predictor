@@ -93,7 +93,7 @@ export default function CorrelationHeatmap() {
               PM2.5 Feature Pearson Correlation Matrix & Dependencies
             </h3>
             <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.78rem', color: '#64748B' }}>
-              Derived from {eda.total_observations ? eda.total_observations.toLocaleString() : '1,464'} hourly observations in Hopsworks Feature Store V2
+              Derived from {eda.total_observations ? eda.total_observations.toLocaleString() : '--'} hourly observations in Hopsworks Feature Store V2
             </p>
           </div>
         </div>

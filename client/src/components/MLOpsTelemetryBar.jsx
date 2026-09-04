@@ -453,9 +453,9 @@ export function EmailAlertDispatcher() {
 }
 
 export default function MLOpsTelemetryBar({ systemMetrics, modelName, featureStoreStatus }) {
-  const completeness = (systemMetrics && systemMetrics.completeness) || '100.0%';
-  const accuracy = (systemMetrics && systemMetrics.accuracy) || '98.5%';
-  const rawStatus = (systemMetrics && systemMetrics.status) || 'Operational | Hopsworks Synchronized';
+  const completeness = (systemMetrics && systemMetrics.completeness) || '--';
+  const accuracy = (systemMetrics && systemMetrics.accuracy) || '--';
+  const rawStatus = (systemMetrics && systemMetrics.status) || 'Operational';
   const displayStatus = rawStatus.replace(/System Status:\s*/gi, '');
 
   const isConnected = featureStoreStatus !== 'Stale';
@@ -499,13 +499,13 @@ export default function MLOpsTelemetryBar({ systemMetrics, modelName, featureSto
         {/* Stream Pipeline Pill */}
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', backgroundColor: isConnected ? '#ECFDF5' : '#FEF2F2', border: `1px solid ${isConnected ? '#A7F3D0' : '#FCA5A5'}`, color: isConnected ? '#047857' : '#DC2626', fontWeight: '700', padding: '0.2rem 0.6rem', borderRadius: '0.4rem' }}>
           <Radio size={12} className={isConnected ? 'radar-pulse' : ''} />
-          {isConnected ? 'Stream Active' : 'Stale Fallback'}
+          {isConnected ? 'Stream Active' : 'Stale Stream'}
         </span>
 
         {/* Active Registry Model Pill */}
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', backgroundColor: '#F5F3FF', border: '1px solid #DDD6FE', color: '#6D28D9', fontWeight: '700', padding: '0.2rem 0.6rem', borderRadius: '0.4rem' }}>
           <Layers size={12} color="#7C3AED" />
-          {modelName || 'aqi_pm25_predictor v28'}
+          {modelName || '--'}
         </span>
 
       </div>

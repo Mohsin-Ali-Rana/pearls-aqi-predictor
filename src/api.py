@@ -94,29 +94,29 @@ class SystemMetrics(BaseModel):
     status: str
 
 class CurrentWeather(BaseModel):
-    temperature: float
-    humidity: float
-    pressure: float
-    wind_speed: float
-    wind_direction: str
-    boundary_condition: str
-    aerosol_risk: str
-    inversion_risk: str
+    temperature: Optional[float] = None
+    humidity: Optional[float] = None
+    pressure: Optional[float] = None
+    wind_speed: Optional[float] = None
+    wind_direction: Optional[str] = None
+    boundary_condition: Optional[str] = None
+    aerosol_risk: Optional[str] = None
+    inversion_risk: Optional[str] = None
 
 class PersistenceLift(BaseModel):
-    day1_lift_pct: float
-    day1_rmse: float
-    day2_lift_pct: float
-    day2_rmse: float
-    day3_lift_pct: float
-    day3_rmse: float
+    day1_lift_pct: Optional[float] = None
+    day1_rmse: Optional[float] = None
+    day2_lift_pct: Optional[float] = None
+    day2_rmse: Optional[float] = None
+    day3_lift_pct: Optional[float] = None
+    day3_rmse: Optional[float] = None
     status: str
 
 from datetime import datetime
 
 class TelemetryResponse(BaseModel):
     city: str
-    coordinates: str = "33.77° N, 72.75° E"
+    coordinates: Optional[str] = None
     stationName: str
     currentAQI: float
     aqiStatus: str
@@ -127,7 +127,7 @@ class TelemetryResponse(BaseModel):
     whoStatus: str
     healthAdvisory: str
     healthDetail: str
-    confidenceScore: int
+    confidenceScore: Optional[int] = None
     modelName: str
     featureStoreStatus: str
     last_updated: Optional[str] = None
@@ -180,10 +180,11 @@ def compute_telemetry_response(force_reload: bool = False) -> TelemetryResponse:
         if horizon_key not in strategic:
             raise ValueError(f"Inference engine did not return a '{horizon_key}' forecast.")
 
-    dynamic_confidence = int(round(float(ml_output.get("forecast_confidence", 94))))
+    raw_conf = ml_output.get("forecast_confidence")
+    dynamic_confidence = int(round(float(raw_conf))) if raw_conf is not None else None
     p_metrics = ml_output.get("pipeline_metrics", {})
-    dynamic_completeness = p_metrics.get("completeness", "N/A")
-    dynamic_accuracy = p_metrics.get("sensor_accuracy", "N/A")
+    dynamic_completeness = p_metrics.get("completeness") or "N/A"
+    dynamic_accuracy = p_metrics.get("sensor_accuracy") or "N/A"
 
     current_pm25 = float(tactical[0]["predicted_pm2_5"])
     current_aqi = round(convert_pm25_to_aqi(current_pm25), 1)
@@ -446,40 +447,10 @@ def get_tournament_summary():
         with open(t_path, "r") as f:
             return json.load(f)
 
-    return {
-        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "persistence_baseline": {
-            "day1": {"rmse": 14.2, "mae": 10.8, "r2": 0.15},
-            "day2": {"rmse": 15.6, "mae": 11.9, "r2": 0.10},
-            "day3": {"rmse": 16.4, "mae": 12.5, "r2": 0.06}
-        },
-        "horizons": {
-            "24h": {
-                "XGBoost": {"rmse": 11.3, "mae": 8.78, "r2": 0.45, "winner": True},
-                "LightGBM": {"rmse": 11.5, "mae": 9.12, "r2": 0.43, "winner": False},
-                "RandomForest": {"rmse": 12.1, "mae": 9.45, "r2": 0.38, "winner": False},
-                "Ridge": {"rmse": 13.2, "mae": 10.21, "r2": 0.28, "winner": False}
-            },
-            "48h": {
-                "XGBoost": {"rmse": 13.15, "mae": 10.49, "r2": 0.25, "winner": True},
-                "LightGBM": {"rmse": 13.4, "mae": 10.88, "r2": 0.22, "winner": False},
-                "RandomForest": {"rmse": 13.7, "mae": 11.02, "r2": 0.19, "winner": False},
-                "Ridge": {"rmse": 14.1, "mae": 10.95, "r2": 0.15, "winner": False}
-            },
-            "72h": {
-                "XGBoost": {"rmse": 13.9, "mae": 11.35, "r2": 0.18, "winner": False},
-                "LightGBM": {"rmse": 13.8, "mae": 11.42, "r2": 0.19, "winner": False},
-                "RandomForest": {"rmse": 14.1, "mae": 11.89, "r2": 0.14, "winner": False},
-                "Ridge": {"rmse": 13.7, "mae": 11.10, "r2": 0.20, "winner": True}
-            }
-        },
-        "lifts": {
-            "day1_lift_rmse_pct": 17.15,
-            "day2_lift_rmse_pct": 11.32,
-            "day3_lift_rmse_pct": 8.41,
-            "overall_lift_rmse_pct": 12.29
-        }
-    }
+    raise HTTPException(
+        status_code=404,
+        detail="Tournament evaluation summary not generated yet. Execute model evaluation pipeline to generate results."
+    )
 
 
 @app.post("/api/subscribe")

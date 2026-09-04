@@ -24,19 +24,19 @@ export default function App() {
 
   // Telemetry State - Bound exclusively to live backend telemetry
   const [telemetry, setTelemetry] = useState({
-    city: "Wah Cantt / Taxila Region",
-    coordinates: "33.77° N, 72.75° E",
-    stationName: "Primary Observation Station",
+    city: null,
+    coordinates: null,
+    stationName: null,
     currentAQI: null,
     aqiStatus: "",
     aqiColor: "#0D9488",
-    aqiDelta: "Live Stream Active",
+    aqiDelta: null,
     pm25: null,
-    whoStatus: "WHO Guidelines Evaluated",
-    healthAdvisory: "Loading Advisory...",
-    healthDetail: "Fetching health telemetry parameters...",
+    whoStatus: null,
+    healthAdvisory: null,
+    healthDetail: null,
     confidenceScore: null,
-    modelName: "Direct Multi-Horizon Ensemble",
+    modelName: null,
     featureStoreStatus: "Connecting",
     forecasts: [],
     trendHistory: [],
@@ -47,8 +47,8 @@ export default function App() {
     currentWeather: null,
     persistenceLift: null,
     systemMetrics: {
-      completeness: "--",
-      accuracy: "--",
+      completeness: null,
+      accuracy: null,
       status: "Initializing System Stream"
     }
   });

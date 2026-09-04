@@ -29,9 +29,9 @@ def run_inference(force_model_reload: bool = False):
         print("⚡ Loading local model bundle from 'aqi_best_model/model.pkl'...")
         model_bundle = joblib.load(os.path.join("aqi_best_model", "model.pkl"))
         class LocalModelMeta:
-            version = 28
-            name = "aqi_pm25_predictor"
-            training_metrics = {"rmse": 12.29, "mae": 9.8, "r2": 0.35}
+            version = int(model_bundle.get("version", 1))
+            name = str(model_bundle.get("name", "aqi_pm25_predictor"))
+            training_metrics = model_bundle.get("training_metrics", {})
         model_meta = LocalModelMeta()
         _MODEL_BUNDLE_CACHE["bundle"] = model_bundle
         _MODEL_BUNDLE_CACHE["model_meta"] = model_meta
@@ -190,28 +190,13 @@ def run_inference(force_model_reload: bool = False):
     hourly_steps = np.arange(1, 73)
     base_interpolated_curve = np.interp(hourly_steps, anchor_steps, anchor_values)
 
-    base_temp = float(df_w_fc['temperature_2m'].mean()) if not df_w_fc.empty and 'temperature_2m' in df_w_fc.columns else 28.0
-    base_wind = float(df_w_fc['wind_speed_10m'].mean()) if not df_w_fc.empty and 'wind_speed_10m' in df_w_fc.columns else 10.0
+    base_temp = float(df_w_fc['temperature_2m'].mean()) if not df_w_fc.empty and 'temperature_2m' in df_w_fc.columns else None
+    base_wind = float(df_w_fc['wind_speed_10m'].mean()) if not df_w_fc.empty and 'wind_speed_10m' in df_w_fc.columns else None
 
     modulated_hourly_curve = []
     for step in range(1, 73):
-        step_time = latest_time_utc + pd.Timedelta(hours=step)
         base_val = base_interpolated_curve[step - 1]
-
-        # Diurnal thermal inversion cycle (peaks 06:00 & 22:00, dips 14:00)
-        diurnal_mod = 0.12 * np.cos(2 * np.pi * (step_time.hour - 6.0) / 24.0)
-
-        # Ventilation / wind dispersion modulation
-        cur_wind = base_wind
-        if not df_w_fc.empty and 'wind_speed_10m' in df_w_fc.columns:
-            time_diffs = (df_w_fc['time'] - step_time).abs()
-            min_idx = time_diffs.idxmin()
-            if time_diffs.loc[min_idx] <= pd.Timedelta(hours=1):
-                cur_wind = float(df_w_fc.loc[min_idx, 'wind_speed_10m'])
-
-        wind_mod = -0.04 * ((cur_wind - base_wind) / (base_wind + 1e-5))
-        
-        final_pm25_step = max(5.0, base_val * (1.0 + diurnal_mod + wind_mod))
+        final_pm25_step = max(0.0, base_val)
         modulated_hourly_curve.append(final_pm25_step)
 
     # Tactical short-term 3-hour forecast
@@ -257,27 +242,26 @@ def run_inference(force_model_reload: bool = False):
         for _, mdata in h72.items():
             if mdata.get("winner"): d3_ts_rmse = float(mdata.get("rmse"))
 
-    d1_rmse = _get_m("day1_rmse", d1_ts_rmse or 11.25)
-    d1_mae  = _get_m("day1_mae",  8.75)
-    d1_r2   = _get_m("day1_r2",   0.458)
+    d1_rmse = _get_m("day1_rmse", d1_ts_rmse)
+    d1_mae  = _get_m("day1_mae",  None)
+    d1_r2   = _get_m("day1_r2",   None)
 
-    d2_rmse = _get_m("day2_rmse", d2_ts_rmse or 12.98)
-    d2_mae  = _get_m("day2_mae",  10.25)
-    d2_r2   = _get_m("day2_r2",   0.278)
+    d2_rmse = _get_m("day2_rmse", d2_ts_rmse)
+    d2_mae  = _get_m("day2_mae",  None)
+    d2_r2   = _get_m("day2_r2",   None)
 
-    d3_rmse = _get_m("day3_rmse", d3_ts_rmse or 13.33)
-    d3_mae  = _get_m("day3_mae",  10.72)
-    d3_r2   = _get_m("day3_r2",   0.234)
+    d3_rmse = _get_m("day3_rmse", d3_ts_rmse)
+    d3_mae  = _get_m("day3_mae",  None)
+    d3_r2   = _get_m("day3_r2",   None)
 
-    # If registry metrics returned uniform aggregate RMSE for all three, override with horizon-specific values
-    if d1_rmse == d2_rmse == d3_rmse:
-        d1_rmse = d1_ts_rmse or 11.25
-        d2_rmse = d2_ts_rmse or 12.98
-        d3_rmse = d3_ts_rmse or 13.33
+    if d1_rmse is not None and d1_rmse == d2_rmse == d3_rmse:
+        d1_rmse = d1_ts_rmse
+        d2_rmse = d2_ts_rmse
+        d3_rmse = d3_ts_rmse
 
-    overall_72h_rmse = _get_m("overall_72h_rmse", model_metrics.get("rmse", 12.52))
-    overall_72h_mae  = _get_m("overall_72h_mae",  model_metrics.get("mae", 9.91))
-    overall_72h_r2   = _get_m("overall_72h_r2",   model_metrics.get("r2", 0.323))
+    overall_72h_rmse = _get_m("overall_72h_rmse", model_metrics.get("rmse"))
+    overall_72h_mae  = _get_m("overall_72h_mae",  model_metrics.get("mae"))
+    overall_72h_r2   = _get_m("overall_72h_r2",   model_metrics.get("r2"))
 
     # ----------------------------------------------------
     # 5. Dynamic Telemetry & Residual Variance Confidence Score
@@ -297,37 +281,36 @@ def run_inference(force_model_reload: bool = False):
     else:
         sensor_accuracy = float(round(non_null_ratio * 100.0, 1))
 
-    # Dynamic confidence based on validation residual variance
-    sample_std = float(round(batch_data['pm2_5'].tail(24).std(), 2)) if 'pm2_5' in batch_data.columns else 12.0
-    eval_mae = d1_mae if (d1_mae is not None and d1_mae > 0.0) else sample_std
-    target_level = max(current_pm25, pred_24h, 1.0)
-    
-    accuracy_ratio = 1.0 - (eval_mae / target_level)
-    dynamic_conf = max(15.0, min(98.0, accuracy_ratio * 100.0))
-    confidence_score = float(round(dynamic_conf, 1))
+    # Dynamic confidence score based on empirical validation MAE
+    if d1_mae is not None and d1_mae > 0.0:
+        target_level = max(current_pm25, pred_24h, 1.0)
+        accuracy_ratio = max(0.0, 1.0 - (d1_mae / target_level))
+        confidence_score = float(round(accuracy_ratio * 100.0, 1))
+    else:
+        confidence_score = None
 
-    def _val_or_default(series_name, default_val):
+    def _val_or_default(series_name, default_val=None):
         if series_name in batch_data.columns:
             v = float(batch_data[series_name].iloc[-1])
             if not pd.isna(v) and v > 0.0:
                 return v
         return default_val
 
-    cur_pm10 = _val_or_default('pm10', current_pm25 * 1.55)
-    cur_no2 = _val_or_default('nitrogen_dioxide', 24.5)
-    cur_o3 = _val_or_default('ozone', 38.2)
-    cur_eaqi = _val_or_default('european_aqi', 42.0)
-    cur_pressure = _val_or_default('surface_pressure', 955.5)
-    cur_wind = _val_or_default('wind_speed_10m', 4.0)
-    cur_temp_val = _val_or_default('temperature_2m', 25.5)
-    cur_hum_val = _val_or_default('relative_humidity_2m', 88.0)
+    cur_pm10 = _val_or_default('pm10', None)
+    cur_no2 = _val_or_default('nitrogen_dioxide', None)
+    cur_o3 = _val_or_default('ozone', None)
+    cur_eaqi = _val_or_default('european_aqi', None)
+    cur_pressure = _val_or_default('surface_pressure', None)
+    cur_wind = _val_or_default('wind_speed_10m', None)
+    cur_temp_val = _val_or_default('temperature_2m', None)
+    cur_hum_val = _val_or_default('relative_humidity_2m', None)
 
     live_hotspots = [
         {
             "id": 1,
             "name": "PM2.5 Fine Particulate Concentration",
-            "aqi": f"{current_pm25:.1f} µg/m³",
-            "estimationType": "Primary Target Feature · Hopsworks Feature Store V2",
+            "aqi": f"{current_pm25:.1f} µg/m³" if current_pm25 is not None else "N/A",
+            "estimationType": "PM2.5 Feature Stream",
             "category": "Fine Particulate",
             "color": "#0284C7",
             "textColor": "#FFFFFF"
@@ -335,8 +318,8 @@ def run_inference(force_model_reload: bool = False):
         {
             "id": 2,
             "name": "PM10 Coarse Particulate Concentration",
-            "aqi": f"{cur_pm10:.1f} µg/m³",
-            "estimationType": "Coarse Aerosol Stream · Open-Meteo Telemetry",
+            "aqi": f"{cur_pm10:.1f} µg/m³" if cur_pm10 is not None else "N/A",
+            "estimationType": "PM10 Feature Stream",
             "category": "Coarse Particulate",
             "color": "#0D9488",
             "textColor": "#FFFFFF"
@@ -344,8 +327,8 @@ def run_inference(force_model_reload: bool = False):
         {
             "id": 3,
             "name": "Nitrogen Dioxide (NO₂) Gas Vector",
-            "aqi": f"{cur_no2:.1f} µg/m³",
-            "estimationType": "Traffic & Combustion Feature · Satellite Stream",
+            "aqi": f"{cur_no2:.1f} µg/m³" if cur_no2 is not None else "N/A",
+            "estimationType": "NO₂ Atmospheric Vector",
             "category": "Gaseous Pollutant",
             "color": "#D97706",
             "textColor": "#FFFFFF"
@@ -353,8 +336,8 @@ def run_inference(force_model_reload: bool = False):
         {
             "id": 4,
             "name": "Ground-Level Ozone (O₃) Vector",
-            "aqi": f"{cur_o3:.1f} µg/m³",
-            "estimationType": "Photochemical Reaction Stream · Open-Meteo",
+            "aqi": f"{cur_o3:.1f} µg/m³" if cur_o3 is not None else "N/A",
+            "estimationType": "O₃ Ground Vector",
             "category": "Photochemical Smog",
             "color": "#7C3AED",
             "textColor": "#FFFFFF"
@@ -362,8 +345,8 @@ def run_inference(force_model_reload: bool = False):
         {
             "id": 5,
             "name": "European Air Quality Index (EAQI)",
-            "aqi": f"{cur_eaqi:.1f} Index",
-            "estimationType": "Composite Regional Standard · Feature Store",
+            "aqi": f"{cur_eaqi:.1f} Index" if cur_eaqi is not None else "N/A",
+            "estimationType": "EAQI Regional Composite",
             "category": "Regional Composite",
             "color": "#2563EB",
             "textColor": "#FFFFFF"
@@ -371,8 +354,8 @@ def run_inference(force_model_reload: bool = False):
         {
             "id": 6,
             "name": "Atmospheric Surface Pressure",
-            "aqi": f"{cur_pressure:.1f} hPa",
-            "estimationType": "Barometric Pressure Vector · Valley Boundary Layer",
+            "aqi": f"{cur_pressure:.1f} hPa" if cur_pressure is not None else "N/A",
+            "estimationType": "Surface Pressure Vector",
             "category": "Meteorological Vector",
             "color": "#059669",
             "textColor": "#FFFFFF"
@@ -380,8 +363,8 @@ def run_inference(force_model_reload: bool = False):
         {
             "id": 7,
             "name": "Ambient Air Temperature (2m)",
-            "aqi": f"{cur_temp_val:.1f} °C",
-            "estimationType": "Thermal Profile · Boundary Layer Inversion",
+            "aqi": f"{cur_temp_val:.1f} °C" if cur_temp_val is not None else "N/A",
+            "estimationType": "Surface Temperature Vector",
             "category": "Meteorological Vector",
             "color": "#EA580C",
             "textColor": "#FFFFFF"
@@ -389,8 +372,8 @@ def run_inference(force_model_reload: bool = False):
         {
             "id": 8,
             "name": "Relative Humidity & Moisture (2m)",
-            "aqi": f"{cur_hum_val:.1f} %",
-            "estimationType": "Hygroscopic Moisture Trap · Aerosol Hydration",
+            "aqi": f"{cur_hum_val:.1f} %" if cur_hum_val is not None else "N/A",
+            "estimationType": "Relative Humidity Vector",
             "category": "Meteorological Vector",
             "color": "#0284C7",
             "textColor": "#FFFFFF"
@@ -516,29 +499,6 @@ def run_inference(force_model_reload: bool = False):
         except Exception as e:
             print(f"SHAP extraction note: {e}")
 
-        # Fallback Method 3: Dynamically compute signed feature attributions from model feature importances
-        try:
-            contrib_list = []
-            fi = getattr(model_obj, "feature_importances_", None)
-            if fi is None and hasattr(model_obj, "coef_"):
-                fi = getattr(model_obj, "coef_", None)
-            
-            if fi is not None and len(fi) == len(req_cols):
-                for i, feat_name in enumerate(req_cols):
-                    imp = float(fi[i])
-                    feat_val = float(round(float(X_input[feat_name].iloc[0]), 2)) if feat_name in X_input.columns else 0.0
-                    sign = 1.0 if (i % 2 == 0) else -1.0
-                    push_val = float(round(imp * sign * 15.0 * horizon_scale, 4))
-                    contrib_list.append({
-                        "feature": feat_name,
-                        "contribution": push_val,
-                        "feature_value": feat_val
-                    })
-                contrib_list.sort(key=lambda x: abs(x["contribution"]), reverse=True)
-                return contrib_list[:8]
-        except Exception as ex:
-            print(f"SHAP fallback evaluation note: {ex}")
-
         return []
 
     shap_24h = _extract_shap(model_24h, horizon_scale=1.00)
@@ -574,46 +534,46 @@ def run_inference(force_model_reload: bool = False):
                 std_tuples = sorted(stds.items(), key=lambda x: x[1], reverse=True)
                 shap_explanations = [{"feature": f, "importance": float(round(v, 4))} for f, v in std_tuples[:6]]
 
-    # Compute live current weather parameters for dynamic frontend rendering
-    cur_temp = float(df_w_fc['temperature_2m'].iloc[0]) if not df_w_fc.empty and 'temperature_2m' in df_w_fc.columns else float(batch_data['temperature_2m'].iloc[-1]) if 'temperature_2m' in batch_data.columns else 26.4
-    cur_hum = float(df_w_fc['relative_humidity_2m'].iloc[0]) if not df_w_fc.empty and 'relative_humidity_2m' in df_w_fc.columns else float(batch_data['relative_humidity_2m'].iloc[-1]) if 'relative_humidity_2m' in batch_data.columns else 78.0
+    cur_temp = float(df_w_fc['temperature_2m'].iloc[0]) if not df_w_fc.empty and 'temperature_2m' in df_w_fc.columns else float(batch_data['temperature_2m'].iloc[-1]) if (batch_data is not None and 'temperature_2m' in batch_data.columns) else None
+    cur_hum = float(df_w_fc['relative_humidity_2m'].iloc[0]) if not df_w_fc.empty and 'relative_humidity_2m' in df_w_fc.columns else float(batch_data['relative_humidity_2m'].iloc[-1]) if (batch_data is not None and 'relative_humidity_2m' in batch_data.columns) else None
 
     current_weather = {
-        "temperature": float(round(cur_temp, 1)),
-        "humidity": float(round(cur_hum, 1)),
-        "pressure": float(round(cur_pressure, 1)),
-        "wind_speed": float(round(cur_wind, 1)),
-        "wind_direction": "NW · Moderate" if cur_wind > 8.0 else "N · Light Breeze",
-        "boundary_condition": "Stable Boundary Layer" if cur_wind <= 8.5 else "Dispersive Boundary Layer",
-        "aerosol_risk": "Elevated Aerosol Risk" if cur_hum > 75.0 else "Low Aerosol Trap",
-        "inversion_risk": "Valley Inversion Risk" if cur_pressure < 950.0 else "Standard Barometric"
+        "temperature": float(round(cur_temp, 1)) if cur_temp is not None else None,
+        "humidity": float(round(cur_hum, 1)) if cur_hum is not None else None,
+        "pressure": float(round(cur_pressure, 1)) if cur_pressure is not None else None,
+        "wind_speed": float(round(cur_wind, 1)) if cur_wind is not None else None,
+        "wind_direction": "NW · Moderate" if (cur_wind is not None and cur_wind > 8.0) else "N · Light Breeze" if cur_wind is not None else None,
+        "boundary_condition": "Stable Boundary Layer" if (cur_wind is not None and cur_wind <= 8.5) else "Dispersive Boundary Layer" if cur_wind is not None else None,
+        "aerosol_risk": "Elevated Aerosol Risk" if (cur_hum is not None and cur_hum > 75.0) else "Low Aerosol Trap" if cur_hum is not None else None,
+        "inversion_risk": "Valley Inversion Risk" if (cur_pressure is not None and cur_pressure < 950.0) else "Standard Barometric" if cur_pressure is not None else None
     }
 
-    d1_lift = ts_data.get("lifts", {}).get("day1_lift_rmse_pct", 10.68)
-    d2_lift = ts_data.get("lifts", {}).get("day2_lift_rmse_pct", 12.22)
-    d3_lift = ts_data.get("lifts", {}).get("day3_lift_rmse_pct", 17.37)
+    d1_lift = ts_data.get("lifts", {}).get("day1_lift_rmse_pct")
+    d2_lift = ts_data.get("lifts", {}).get("day2_lift_rmse_pct")
+    d3_lift = ts_data.get("lifts", {}).get("day3_lift_rmse_pct")
 
+    gate_passed = bool(d1_lift is not None and d1_lift > 0)
     persistence_lift = {
-        "day1_lift_pct": float(round(d1_lift, 2)),
-        "day1_rmse": float(round(d1_rmse, 2)),
-        "day2_lift_pct": float(round(d2_lift, 2)),
-        "day2_rmse": float(round(d2_rmse, 2)),
-        "day3_lift_pct": float(round(d3_lift, 2)),
-        "day3_rmse": float(round(d3_rmse, 2)),
-        "status": "ACTIVE · Validation Gate Evaluated (Candidate beats Registered Production Model)"
+        "day1_lift_pct": float(round(d1_lift, 2)) if d1_lift is not None else None,
+        "day1_rmse": float(round(d1_rmse, 2)) if d1_rmse is not None else None,
+        "day2_lift_pct": float(round(d2_lift, 2)) if d2_lift is not None else None,
+        "day2_rmse": float(round(d2_rmse, 2)) if d2_rmse is not None else None,
+        "day3_lift_pct": float(round(d3_lift, 2)) if d3_lift is not None else None,
+        "day3_rmse": float(round(d3_rmse, 2)) if d3_rmse is not None else None,
+        "status": "ACTIVE · Validation Gate Evaluated" if gate_passed else "ACTIVE · Baseline Model Registered"
     }
 
     # Calculate real dynamic Data Completeness & Sensor Model Accuracy from live feature store state
     total_cells = len(batch_data) * len(req_cols) if batch_data is not None and len(req_cols) > 0 else 0
     non_null_cells = int(batch_data[req_cols].notnull().sum().sum()) if total_cells > 0 else 0
-    completeness_pct = float(round((non_null_cells / total_cells) * 100.0, 1)) if total_cells > 0 else 99.2
+    completeness_pct = float(round((non_null_cells / total_cells) * 100.0, 1)) if total_cells > 0 else None
 
-    pm25_std = float(batch_data['pm2_5'].std()) if batch_data is not None and 'pm2_5' in batch_data.columns and len(batch_data) > 1 else 15.0
-    if pm25_std > 0 and d1_rmse is not None:
+    pm25_std = float(batch_data['pm2_5'].std()) if batch_data is not None and 'pm2_5' in batch_data.columns and len(batch_data) > 1 else None
+    if pm25_std is not None and pm25_std > 0 and d1_rmse is not None:
         nrmse = float(d1_rmse) / pm25_std
         sensor_accuracy_pct = float(round(max(65.0, min(98.8, (1.0 - nrmse * 0.35) * 100.0)), 1))
     else:
-        sensor_accuracy_pct = 92.4
+        sensor_accuracy_pct = None
 
     current_time_str = datetime.now().strftime("%I:%M %p")
 
