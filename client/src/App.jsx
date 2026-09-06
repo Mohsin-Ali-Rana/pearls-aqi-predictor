@@ -201,7 +201,7 @@ export default function App() {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <button
-            onClick={triggerManualSync}
+            onClick={() => fetchTelemetryData(true)}
             disabled={isSyncing}
             style={{
               padding: '0.45rem 0.75rem',
