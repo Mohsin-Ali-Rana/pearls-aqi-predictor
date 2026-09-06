@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Activity, RefreshCw, MapPin, Radio, Bell,
+  Activity, RefreshCw, MapPin, Radio, Bell, Menu, X,
   Globe, LayoutDashboard, Sparkles, LineChart, TrendingUp, ChevronRight, Cpu, Layers
 } from 'lucide-react';
 import { 
@@ -17,6 +17,7 @@ import MLOpsTelemetryBar, { EmailAlertDispatcher } from './components/MLOpsTelem
 
 export default function App() {
   const [activeNav, setActiveNav] = useState('dashboard');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState(0);
@@ -177,29 +178,145 @@ export default function App() {
   ];
 
   return (
-    <div style={{ 
-      display: 'flex', 
-      minHeight: '100vh', 
-      backgroundColor: '#F8FAFC', 
-      fontFamily: "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif",
-      color: '#0F172A'
-    }}>
+    <div className="app-shell">
       
-      {/* Light Professional Executive Sidebar */}
-      <aside style={{ 
-        width: '280px', 
-        backgroundColor: '#FFFFFF', 
-        borderRight: '1px solid #E2E8F0', 
-        padding: '1.75rem 1.25rem', 
-        display: 'flex', 
-        flexDirection: 'column', 
-        justify: 'space-between',
-        position: 'fixed',
-        height: '100vh',
-        boxSizing: 'border-box',
-        zIndex: 50,
-        boxShadow: '4px 0 24px rgba(15, 23, 42, 0.03)'
-      }}>
+      {/* Mobile Top Navigation Header */}
+      <div className="mobile-header-bar">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+          <img 
+            src="/pearls_logo_new.png" 
+            alt="PEARLS AQI Logo" 
+            style={{ height: '32px', width: 'auto', objectFit: 'contain' }}
+            onError={(e) => { e.target.src = '/logo.png'; }}
+          />
+          <span style={{ fontSize: '1.1rem', fontWeight: '900', color: '#0F172A' }}>PEARLS</span>
+          <span style={{ fontSize: '1.1rem', fontWeight: '900', color: '#0D9488' }}>AQI</span>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <button
+            onClick={triggerManualSync}
+            disabled={isSyncing}
+            style={{
+              padding: '0.45rem 0.75rem',
+              borderRadius: '0.5rem',
+              border: '1px solid #CCFBF1',
+              backgroundColor: '#F0FDFA',
+              color: '#0D9488',
+              fontWeight: '700',
+              fontSize: '0.75rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.35rem',
+              cursor: 'pointer'
+            }}
+          >
+            <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
+            <span>{isSyncing ? 'Syncing...' : 'Sync'}</span>
+          </button>
+
+          <button
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            style={{
+              padding: '0.5rem',
+              borderRadius: '0.5rem',
+              border: '1px solid #E2E8F0',
+              backgroundColor: '#F8FAFC',
+              color: '#0F172A',
+              display: 'grid',
+              placeItems: 'center',
+              cursor: 'pointer'
+            }}
+          >
+            {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
+        </div>
+      </div>
+
+      {/* Mobile Menu Drawer Overlay */}
+      {mobileMenuOpen && (
+        <div className="mobile-drawer-overlay active" onClick={() => setMobileMenuOpen(false)}>
+          <div className="mobile-drawer-content" onClick={(e) => e.stopPropagation()}>
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                  <img src="/pearls_logo_new.png" alt="PEARLS AQI Logo" style={{ height: '36px', width: 'auto' }} onError={(e) => { e.target.src = '/logo.png'; }} />
+                  <span style={{ fontSize: '1.2rem', fontWeight: '900', color: '#0F172A' }}>PEARLS AQI</span>
+                </div>
+                <button onClick={() => setMobileMenuOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+                  <X size={20} color="#64748B" />
+                </button>
+              </div>
+
+              <nav style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {navItems.map((navItem) => {
+                  const Icon = navItem.icon;
+                  const isActive = activeNav === navItem.id;
+                  return (
+                    <button
+                      key={navItem.id}
+                      onClick={() => {
+                        setActiveNav(navItem.id);
+                        setMobileMenuOpen(false);
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        width: '100%',
+                        padding: '0.8rem 1rem',
+                        borderRadius: '0.75rem',
+                        border: isActive ? '1px solid #CCFBF1' : '1px solid transparent',
+                        backgroundColor: isActive ? '#F0FDFA' : 'transparent',
+                        color: isActive ? '#0D9488' : '#64748B',
+                        fontWeight: isActive ? '800' : '600',
+                        fontSize: '0.9rem',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+                        <Icon size={19} color={isActive ? '#0D9488' : '#64748B'} />
+                        <span>{navItem.label}</span>
+                      </div>
+                      {isActive && <ChevronRight size={16} color="#0D9488" />}
+                    </button>
+                  );
+                })}
+              </nav>
+            </div>
+
+            <div style={{ paddingTop: '1rem', borderTop: '1px solid #F1F5F9' }}>
+              <button
+                onClick={() => {
+                  scrollToAlertDispatcher();
+                  setMobileMenuOpen(false);
+                }}
+                style={{
+                  width: '100%',
+                  padding: '0.75rem',
+                  borderRadius: '0.75rem',
+                  backgroundColor: '#0D9488',
+                  color: '#FFFFFF',
+                  fontWeight: '800',
+                  border: 'none',
+                  fontSize: '0.85rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.5rem',
+                  cursor: 'pointer'
+                }}
+              >
+                <Bell size={16} />
+                <span>Configure AQI Alerts</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Light Professional Executive Desktop Sidebar */}
+      <aside className="desktop-sidebar">
         <div>
           {/* Logo Header Container (New Transparent PNG Logo + Crisp Typography) */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', marginBottom: '2.2rem' }}>
@@ -443,21 +560,9 @@ export default function App() {
       </aside>
 
       {/* Main Workspace Area */}
-      <main style={{ marginLeft: '280px', flex: 1, padding: '2rem 2.5rem', display: 'flex', flexDirection: 'column', gap: '1.75rem', boxSizing: 'border-box', maxWidth: '1440px' }}>
-               {/* Flagship Hero Command Banner (Wah Cantt & Taxila Primary Zone) */}
-        <header style={{ 
-          backgroundColor: '#FFFFFF', 
-          padding: '1.6rem 2.2rem', 
-          borderRadius: '1.25rem', 
-          border: '1.5px solid #CCFBF1',
-          boxShadow: '0 8px 32px -4px rgba(13, 148, 136, 0.12), 0 4px 18px -2px rgba(15, 23, 42, 0.04)',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          gap: '1.5rem',
-          position: 'relative',
-          overflow: 'hidden'
-        }}>
+      <main className="main-workspace">
+        {/* Flagship Hero Command Banner (Wah Cantt & Taxila Primary Zone) */}
+        <header className="hero-command-header">
           {/* Ambient subtle decorative background accent */}
           <div style={{
             position: 'absolute',
@@ -511,7 +616,7 @@ export default function App() {
           </div>
 
           {/* Right Telemetry Controls */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', zIndex: 1, flexShrink: 0 }}>
+          <div className="hero-command-controls">
             
             {/* Target Coordinate Grid Card (No Repeated City Text) */}
             <div style={{ 

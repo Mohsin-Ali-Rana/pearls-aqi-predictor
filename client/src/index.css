@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap');
 
 :root {
   --bg-main: #F8FAFC;
@@ -16,8 +16,11 @@
   box-sizing: border-box;
 }
 
-body {
+html, body {
   margin: 0;
+  padding: 0;
+  width: 100%;
+  overflow-x: hidden;
   background-color: var(--bg-main);
   color: var(--text-primary);
   font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -108,4 +111,174 @@ body {
 
 .radar-pulse {
   animation: radarPulse 1.5s infinite ease-in-out;
+}
+
+/* ==========================================================================
+   RESPONSIVE LAYOUT ENGINE
+   ========================================================================== */
+
+/* Main App Shell Layout */
+.app-shell {
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
+  background-color: #F8FAFC;
+  position: relative;
+}
+
+/* Desktop Sidebar */
+.desktop-sidebar {
+  width: 280px;
+  min-width: 280px;
+  background-color: #FFFFFF;
+  border-right: 1px solid #E2E8F0;
+  padding: 1.75rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  box-sizing: border-box;
+  z-index: 50;
+  box-shadow: 4px 0 24px rgba(15, 23, 42, 0.03);
+}
+
+/* Main Content Workspace */
+.main-workspace {
+  flex: 1;
+  min-width: 0; /* Prevents flex child overflow */
+  padding: 2rem 2.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+  box-sizing: border-box;
+  max-width: 1440px;
+  margin: 0 auto;
+}
+
+/* Mobile Header Bar */
+.mobile-header-bar {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 1.25rem;
+  background-color: #FFFFFF;
+  border-bottom: 1px solid #E2E8F0;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04);
+}
+
+/* Mobile Drawer Overlay */
+.mobile-drawer-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background-color: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(4px);
+  z-index: 200;
+}
+
+.mobile-drawer-content {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 290px;
+  max-width: 85vw;
+  background-color: #FFFFFF;
+  padding: 1.5rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  z-index: 201;
+  box-shadow: 8px 0 32px rgba(15, 23, 42, 0.15);
+  overflow-y: auto;
+}
+
+/* Header Banner Responsive Flex */
+.hero-command-header {
+  background-color: #FFFFFF;
+  padding: 1.6rem 2.2rem;
+  border-radius: 1.25rem;
+  border: 1.5px solid #CCFBF1;
+  box-shadow: 0 8px 32px -4px rgba(13, 148, 136, 0.12), 0 4px 18px -2px rgba(15, 23, 42, 0.04);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1.5rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.hero-command-controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  z-index: 1;
+  flex-shrink: 0;
+}
+
+/* Chart Responsive Touch Container */
+.responsive-chart-container {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Media Breakpoint Rules */
+@media (max-width: 1024px) {
+  .desktop-sidebar {
+    display: none !important;
+  }
+  
+  .mobile-header-bar {
+    display: flex !important;
+  }
+
+  .mobile-drawer-overlay.active {
+    display: block !important;
+  }
+  
+  .main-workspace {
+    padding: 1.25rem 1rem;
+    width: 100%;
+  }
+
+  .hero-command-header {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 1.25rem 1.25rem;
+    gap: 1.25rem;
+  }
+
+  .hero-command-controls {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: space-between;
+  }
+}
+
+@media (max-width: 640px) {
+  .main-workspace {
+    padding: 0.85rem 0.65rem;
+    gap: 1.25rem;
+  }
+
+  .hero-command-header {
+    padding: 1rem;
+    border-radius: 1rem;
+  }
+
+  .hero-command-header h1 {
+    font-size: 1.6rem !important;
+  }
+
+  .hero-command-controls {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
 }
