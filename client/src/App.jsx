@@ -15,6 +15,7 @@ import TournamentChart from './components/TournamentChart';
 import CorrelationHeatmap from './components/CorrelationHeatmap';
 import MLOpsTelemetryBar, { EmailAlertDispatcher } from './components/MLOpsTelemetryBar';
 
+// PEARLS AQI Command Center - Production Release
 export default function App() {
   const [activeNav, setActiveNav] = useState('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
