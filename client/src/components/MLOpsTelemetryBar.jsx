@@ -14,9 +14,9 @@ export function EmailAlertDispatcher() {
   const [errorMsg, setErrorMsg] = useState('');
 
   const getApiUrl = (path) => {
-    const envUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || '';
-    const cleanBase = envUrl ? envUrl.replace(/\/$/, '') : '';
-    return cleanBase ? `${cleanBase}${path}` : path;
+    const envUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || 'https://pearls-aqi-predictor-production.up.railway.app';
+    const cleanBase = envUrl.replace(/\/$/, '');
+    return `${cleanBase}${path}`;
   };
 
   const handleSubscribe = async (e) => {

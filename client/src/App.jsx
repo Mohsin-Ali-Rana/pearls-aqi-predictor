@@ -56,9 +56,9 @@ export default function App() {
   });
 
   const getApiUrl = (path) => {
-    const envUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || '';
-    const cleanBase = envUrl ? envUrl.replace(/\/$/, '') : '';
-    return cleanBase ? `${cleanBase}${path}` : path;
+    const envUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || 'https://pearls-aqi-predictor-production.up.railway.app';
+    const cleanBase = envUrl.replace(/\/$/, '');
+    return `${cleanBase}${path}`;
   };
 
   const fetchTelemetryData = async (showSyncAnim = true, isBackground = false) => {
@@ -75,23 +75,18 @@ export default function App() {
       }, 350);
     }
 
-    const endpoints = [
-      getApiUrl('/api/telemetry'),
-      'https://pearls-aqi-predictor-production.up.railway.app/api/telemetry',
-      '/api/telemetry'
-    ];
+    const apiUrl = getApiUrl('/api/telemetry');
     let success = false;
 
-    for (const endpoint of endpoints) {
-      try {
-        const response = await fetch(endpoint);
-        if (response.ok) {
-          const data = await response.json();
-          setTelemetry(data);
-          success = true;
-          break;
-        }
-      } catch (error) {}
+    try {
+      const response = await fetch(apiUrl);
+      if (response.ok) {
+        const data = await response.json();
+        setTelemetry(data);
+        success = true;
+      }
+    } catch (error) {
+      console.warn("Backend fetch failed, retrying...", error);
     }
 
     if (!isBackground) {
@@ -116,21 +111,13 @@ export default function App() {
   };
 
   const fetchEdaData = async () => {
-    const endpoints = [
-      getApiUrl('/api/eda'),
-      'https://pearls-aqi-predictor-production.up.railway.app/api/eda',
-      '/api/eda'
-    ];
-    for (const ep of endpoints) {
-      try {
-        const res = await fetch(ep);
-        if (res.ok) {
-          const data = await res.json();
-          setEdaData(data);
-          break;
-        }
-      } catch (e) {}
-    }
+    try {
+      const res = await fetch(getApiUrl('/api/eda'));
+      if (res.ok) {
+        const data = await res.json();
+        setEdaData(data);
+      }
+    } catch (e) {}
   };
 
   useEffect(() => {
