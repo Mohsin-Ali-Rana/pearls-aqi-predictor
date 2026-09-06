@@ -72,7 +72,7 @@ export default function App() {
     if (!isBackground) {
       interval = setInterval(() => {
         setSyncProgress((prev) => (prev < 85 ? prev + 15 : prev));
-      }, 300);
+      }, 350);
     }
 
     const endpoints = [
@@ -96,18 +96,19 @@ export default function App() {
 
     if (!isBackground) {
       if (interval) clearInterval(interval);
-      setSyncProgress(100);
       
-      // Ensure banner remains visible for 1.5s until user confirms data is on screen
-      setTimeout(() => {
-        setIsLoading(false);
-        setIsSyncing(false);
-        setTimeout(() => setSyncProgress(0), 400);
-      }, 1500);
-    }
-
-    if (!success) {
-      console.warn("Telemetry API offline or starting up.");
+      if (success) {
+        setSyncProgress(100);
+        // Keep loading banner visible at 100% for 2.5s AFTER telemetry is rendered on screen
+        setTimeout(() => {
+          setIsLoading(false);
+          setIsSyncing(false);
+          setTimeout(() => setSyncProgress(0), 400);
+        }, 2500);
+      } else {
+        setSyncProgress(50);
+        console.warn("Telemetry API offline or starting up.");
+      }
     }
   };
 
@@ -711,20 +712,24 @@ export default function App() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
                   <Radio size={20} color="#0D9488" className="radar-pulse" />
                   <div>
-                    <span style={{ fontSize: '0.88rem', fontWeight: '800', color: '#0F172A' }}>
-                      Querying Open-Meteo NWP Atmospheric Grid & Hopsworks Feature Store V2...
+                    <span style={{ fontSize: '0.88rem', fontWeight: '800', color: syncProgress === 100 ? '#059669' : '#0F172A' }}>
+                      {syncProgress === 100
+                        ? '✓ Live Telemetry & 72-Hour Predictions Synchronized!'
+                        : 'Querying Open-Meteo NWP Atmospheric Grid & Hopsworks Feature Store V2...'}
                     </span>
-                    <p style={{ margin: '0.15rem 0 0 0', fontSize: '0.75rem', color: '#64748B' }}>
-                      Re-calibrating direct 72-hour multi-horizon state vectors for Wah Cantt / Taxila grid
+                    <p style={{ margin: '0.15rem 0 0 0', fontSize: '0.75rem', color: syncProgress === 100 ? '#047857' : '#64748B', fontWeight: syncProgress === 100 ? '600' : '400' }}>
+                      {syncProgress === 100
+                        ? 'Fresh atmospheric vectors & LightGBM multi-horizon predictions loaded on dashboard'
+                        : 'Re-calibrating direct 72-hour multi-horizon state vectors for Wah Cantt / Taxila grid'}
                     </p>
                   </div>
                 </div>
-                <span style={{ fontSize: '0.85rem', fontWeight: '900', color: '#0D9488', fontFamily: 'monospace' }}>
+                <span style={{ fontSize: '0.85rem', fontWeight: '900', color: syncProgress === 100 ? '#059669' : '#0D9488', fontFamily: 'monospace' }}>
                   {syncProgress}%
                 </span>
               </div>
               <div style={{ marginTop: '0.75rem', height: '4px', backgroundColor: '#E2E8F0', borderRadius: '2px', overflow: 'hidden' }}>
-                <div style={{ width: `${syncProgress}%`, height: '100%', backgroundColor: '#0D9488', transition: 'width 0.2s ease' }} />
+                <div style={{ width: `${syncProgress}%`, height: '100%', backgroundColor: syncProgress === 100 ? '#10B981' : '#0D9488', transition: 'width 0.3s ease-out' }} />
               </div>
             </motion.div>
           )}
