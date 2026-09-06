@@ -71,6 +71,7 @@ export default function App() {
 
     const endpoints = [
       getApiUrl('/api/telemetry'),
+      'https://pearls-aqi-predictor-production.up.railway.app/api/telemetry',
       '/api/telemetry'
     ];
     let success = false;
@@ -116,7 +117,11 @@ export default function App() {
   };
 
   const fetchEdaData = async () => {
-    const endpoints = [getApiUrl('/api/eda'), '/api/eda'];
+    const endpoints = [
+      getApiUrl('/api/eda'),
+      'https://pearls-aqi-predictor-production.up.railway.app/api/eda',
+      '/api/eda'
+    ];
     for (const ep of endpoints) {
       try {
         const res = await fetch(ep);

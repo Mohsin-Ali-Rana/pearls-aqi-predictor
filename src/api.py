@@ -33,12 +33,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000"
-    ],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -422,14 +417,16 @@ def compute_telemetry_response(force_reload: bool = False) -> TelemetryResponse:
 # React dashboard ke liye main live telemetry API route
 @app.get("/api/telemetry", response_model=TelemetryResponse)
 def get_live_telemetry(force: bool = False):
-    if force or _TELEMETRY_CACHE["payload"] is None:
+    if force or _TELEMETRY_CACHE["payload"] is None or (time.time() - _TELEMETRY_CACHE["timestamp"]) > CACHE_TTL_SECONDS:
         try:
-            response = compute_telemetry_response(force_reload=True)
+            response = compute_telemetry_response(force_reload=False)
             _TELEMETRY_CACHE["payload"] = response
             _TELEMETRY_CACHE["timestamp"] = time.time()
             return response
         except Exception as e:
-            raise HTTPException(status_code=503, detail=f"Upstream Telemetry Service Error: {str(e)}")
+            if _TELEMETRY_CACHE["payload"] is not None:
+                return _TELEMETRY_CACHE["payload"]
+            raise HTTPException(status_code=503, detail=f"Upstream Telemetry Error: {str(e)}")
 
     return _TELEMETRY_CACHE["payload"]
 
