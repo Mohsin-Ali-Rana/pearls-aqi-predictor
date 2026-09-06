@@ -2,7 +2,6 @@ pandas
 numpy
 requests
 hopsworks
-confluent-kafka
 xgboost
 lightgbm
 scikit-learn
