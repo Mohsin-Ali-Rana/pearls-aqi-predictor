@@ -54,6 +54,12 @@ export default function App() {
     }
   });
 
+  const getApiUrl = (path) => {
+    const envUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || '';
+    const cleanBase = envUrl ? envUrl.replace(/\/$/, '') : '';
+    return cleanBase ? `${cleanBase}${path}` : path;
+  };
+
   const fetchTelemetryData = async (showSyncAnim = false, isBackground = false) => {
     if (showSyncAnim) {
       setIsSyncing(true);
@@ -63,9 +69,8 @@ export default function App() {
     }
 
     const endpoints = [
-      '/api/telemetry',
-      'http://127.0.0.1:8000/api/telemetry',
-      'http://localhost:8000/api/telemetry'
+      getApiUrl('/api/telemetry'),
+      '/api/telemetry'
     ];
     let success = false;
     
@@ -110,7 +115,7 @@ export default function App() {
   };
 
   const fetchEdaData = async () => {
-    const endpoints = ['/api/eda', 'http://127.0.0.1:8000/api/eda', 'http://localhost:8000/api/eda'];
+    const endpoints = [getApiUrl('/api/eda'), '/api/eda'];
     for (const ep of endpoints) {
       try {
         const res = await fetch(ep);

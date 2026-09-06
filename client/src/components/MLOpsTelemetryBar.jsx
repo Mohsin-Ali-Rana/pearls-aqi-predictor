@@ -13,6 +13,12 @@ export function EmailAlertDispatcher() {
   const [subscribedMeta, setSubscribedMeta] = useState({ threshold: 100, frequency: '6h' });
   const [errorMsg, setErrorMsg] = useState('');
 
+  const getApiUrl = (path) => {
+    const envUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || '';
+    const cleanBase = envUrl ? envUrl.replace(/\/$/, '') : '';
+    return cleanBase ? `${cleanBase}${path}` : path;
+  };
+
   const handleSubscribe = async (e) => {
     e.preventDefault();
     setErrorMsg('');
@@ -26,7 +32,7 @@ export function EmailAlertDispatcher() {
     setSubmitting(true);
 
     try {
-      const res = await fetch('/api/subscribe', {
+      const res = await fetch(getApiUrl('/api/subscribe'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -65,7 +71,7 @@ export function EmailAlertDispatcher() {
     setSubmitting(true);
 
     try {
-      const res = await fetch('/api/unsubscribe', {
+      const res = await fetch(getApiUrl('/api/unsubscribe'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: cleanedEmail })
