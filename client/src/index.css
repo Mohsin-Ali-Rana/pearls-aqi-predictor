@@ -136,25 +136,27 @@ html, body {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  position: sticky;
+  position: fixed;
   top: 0;
+  left: 0;
+  bottom: 0;
   height: 100vh;
   box-sizing: border-box;
-  z-index: 50;
+  z-index: 100;
   box-shadow: 4px 0 24px rgba(15, 23, 42, 0.03);
 }
 
 /* Main Content Workspace */
 .main-workspace {
   flex: 1;
-  min-width: 0; /* Prevents flex child overflow */
+  min-width: 0;
+  margin-left: 280px;
   padding: 2rem 2.5rem;
   display: flex;
   flex-direction: column;
   gap: 1.75rem;
   box-sizing: border-box;
-  max-width: 1440px;
-  margin: 0 auto;
+  width: calc(100% - 280px);
 }
 
 /* Mobile Header Bar */
@@ -237,14 +239,11 @@ html, body {
   .mobile-header-bar {
     display: flex !important;
   }
-
-  .mobile-drawer-overlay.active {
-    display: block !important;
-  }
   
   .main-workspace {
-    padding: 1.25rem 1rem;
-    width: 100%;
+    margin-left: 0 !important;
+    padding: 1.25rem 1rem !important;
+    width: 100% !important;
   }
 
   .hero-command-header {
@@ -263,7 +262,7 @@ html, body {
 
 @media (max-width: 640px) {
   .main-workspace {
-    padding: 0.85rem 0.65rem;
+    padding: 0.85rem 0.65rem !important;
     gap: 1.25rem;
   }
 
