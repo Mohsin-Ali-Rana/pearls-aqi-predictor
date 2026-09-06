@@ -139,13 +139,15 @@ def run_inference(force_model_reload: bool = False):
     try:
         project = get_hopsworks_project()
         fs = project.get_feature_store()
-        aqi_fg = fs.get_feature_group("aqi_hourly_features", version=2)
-        
-        # Read latest records from Hopsworks Feature Group
         try:
-            batch_data = aqi_fg.read(read_options={"use_hive": False})
-        except Exception:
+            aqi_fg = fs.get_feature_group("aqi_hourly_features", version=1)
             batch_data = aqi_fg.read()
+        except Exception:
+            aqi_fg = fs.get_feature_group("aqi_hourly_features", version=2)
+            try:
+                batch_data = aqi_fg.read(read_options={"use_hive": False})
+            except Exception:
+                batch_data = aqi_fg.read()
 
         if batch_data is not None and not batch_data.empty:
             feature_store_connected = True
