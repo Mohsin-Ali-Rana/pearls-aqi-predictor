@@ -1,8 +1,5 @@
+# PM2.5 concentration (µg/m³) ko US EPA AQI standard scale (0-500) par linear interpolation se map karne ka utility function
 def convert_pm25_to_aqi(pm25: float) -> float:
-    """
-    Maps PM2.5 concentrations (µg/m³) to US EPA AQI standard range (0-500).
-    Includes input clamping for physical realism and output capping at 500.0.
-    """
     c = max(0.0, float(pm25))
     if c <= 12.0:
         aqi = (50.0 / 12.0) * c
@@ -22,8 +19,12 @@ def convert_pm25_to_aqi(pm25: float) -> float:
     return float(round(min(500.0, max(0.0, aqi)), 1))
 
 
+
+
+
+
+# AQI numerical value ke according EPA health category description return karne ka function
 def get_aqi_status(aqi_val: float) -> str:
-    """Returns EPA human-readable health category for a given AQI value."""
     aqi = float(aqi_val)
     if aqi <= 50.0:
         return "Good"

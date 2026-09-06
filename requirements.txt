@@ -10,3 +10,6 @@ joblib
 pyarrow
 python-dotenv
 shap
+fastapi>=0.100.0
+uvicorn[standard]>=0.22.0
+pydantic>=2.0.0

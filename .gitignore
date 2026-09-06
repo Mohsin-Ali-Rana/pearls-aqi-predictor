@@ -1,21 +1,23 @@
-# data/
-# __pycache__/
-# *.pyc
-# .ipynb_checkpoints/
-
-
-# Environments & Caches
+# Environments & Dependencies
 venv/
+env/
+client/node_modules/
+client/dist/
+
+# Python & Pytest Caches
 __pycache__/
+src/__pycache__/
 *.pyc
+.pytest_cache/
 .ipynb_checkpoints/
 
-# Data & Local Outputs
-data/
-*.csv
-*.pkl
-*.log
-aqi_best_model/
+# Environment Variables & Secrets
 .env
 .env.*
 !.env.example
+
+# OS & Temporary Junk Files
+.DS_Store
+Thumbs.db
+*.log
+tmp_*

@@ -3,46 +3,59 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import time
+from datetime import datetime
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Union
 import uvicorn
 
-# Import the actual working inference function and utilities
 try:
-    from src.inference import run_inference
+    import src.inference as inference_mod
     from src.utils import convert_pm25_to_aqi, get_aqi_status
     from src.config import LOCATION_NAME, STATION_NAME, LOCATION_LATITUDE, LOCATION_LONGITUDE
     from src.alerts import dispatch_hazardous_aqi_alerts, send_welcome_email
+    from src.feature_pipeline import run_feature_pipeline
 except ImportError:
-    from inference import run_inference
+    import inference as inference_mod
     from utils import convert_pm25_to_aqi, get_aqi_status
     from config import LOCATION_NAME, STATION_NAME, LOCATION_LATITUDE, LOCATION_LONGITUDE
     from alerts import dispatch_hazardous_aqi_alerts, send_welcome_email
+    from feature_pipeline import run_feature_pipeline
 
+
+# --- Stage: REST API Serving Layer ---
+# FastAPI application instance setup
 app = FastAPI(
     title="PEARLS AQI Predictor API",
     description="MLOps Backend serving dynamic LightGBM multi-horizon air quality predictions."
 )
 
-# Enable CORS for React frontend (Vite port 5173 / localhost)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Global in-memory cache for high-availability inference serving
 _TELEMETRY_CACHE = {
     "payload": None,
     "timestamp": 0.0
 }
-CACHE_TTL_SECONDS = 120.0  # 2 minutes TTL
+CACHE_TTL_SECONDS = 120.0
 
-# --- Pydantic Data Contracts ---
+
+
+
+
+
+# Pydantic data contracts for request and response validation
 class ForecastHorizon(BaseModel):
     horizon: str
     aqi: float
@@ -58,6 +71,11 @@ class ForecastHorizon(BaseModel):
     windSpeed: Optional[float] = None
     modelName: Optional[str] = None
 
+
+
+
+
+
 class TrendPoint(BaseModel):
     time: str
     aqi: float
@@ -65,6 +83,11 @@ class TrendPoint(BaseModel):
     category: Optional[str] = "Moderate"
     categoryColor: Optional[str] = "#F59E0B"
     isForecast: Optional[bool] = False
+
+
+
+
+
 
 class HotspotStation(BaseModel):
     id: int
@@ -74,24 +97,50 @@ class HotspotStation(BaseModel):
     color: Optional[str] = "#F1F5F9"
     textColor: Optional[str] = "#0F172A"
 
+
+
+
+
+
 class ShapFeature(BaseModel):
     feature: str
     importance: float
+
+
+
+
+
 
 class ShapContribution(BaseModel):
     feature: str
     contribution: float
     featureValue: Optional[float] = None
 
+
+
+
+
+
 class SubscriptionRequest(BaseModel):
     email: str
     threshold: Optional[int] = 100
     frequency: Optional[str] = "6h"
 
+
+
+
+
+
 class SystemMetrics(BaseModel):
     completeness: str
     accuracy: str
     status: str
+    registry_verified: Optional[bool] = False
+
+
+
+
+
 
 class CurrentWeather(BaseModel):
     temperature: Optional[float] = None
@@ -103,6 +152,11 @@ class CurrentWeather(BaseModel):
     aerosol_risk: Optional[str] = None
     inversion_risk: Optional[str] = None
 
+
+
+
+
+
 class PersistenceLift(BaseModel):
     day1_lift_pct: Optional[float] = None
     day1_rmse: Optional[float] = None
@@ -112,7 +166,10 @@ class PersistenceLift(BaseModel):
     day3_rmse: Optional[float] = None
     status: str
 
-from datetime import datetime
+
+
+
+
 
 class TelemetryResponse(BaseModel):
     city: str
@@ -131,6 +188,10 @@ class TelemetryResponse(BaseModel):
     modelName: str
     featureStoreStatus: str
     last_updated: Optional[str] = None
+    source: Optional[str] = "Open-Meteo Live API"
+    mode: Optional[str] = "Live Operational Telemetry"
+    fallback_used: Optional[bool] = False
+    registry_verified: Optional[bool] = False
     forecasts: List[ForecastHorizon]
     trendHistory: List[TrendPoint]
     hotspots: List[HotspotStation]
@@ -142,52 +203,59 @@ class TelemetryResponse(BaseModel):
     systemMetrics: SystemMetrics
 
 
-# --- Helper Functions for Formatting Dynamic Outputs ---
-def get_aqi_color(aqi_val: float) -> str:
-    if aqi_val <= 50:
-        return "#10B981"  # Green
-    elif aqi_val <= 100:
-        return "#F59E0B"  # Yellow/Amber
-    elif aqi_val <= 150:
-        return "#EA580C"  # Orange
-    elif aqi_val <= 200:
-        return "#EF4444"  # Red
-    return "#8B5CF6"      # Purple
 
+
+
+
+# AQI level ke hisaab se hex color define karne ka function
+def get_aqi_color(aqi_val: float) -> str:
+    if aqi_val <= 50: return "#10B981"
+    elif aqi_val <= 100: return "#F59E0B"
+    elif aqi_val <= 150: return "#EA580C"
+    elif aqi_val <= 200: return "#EF4444"
+    return "#8B5CF6"
+
+
+
+
+
+
+# Health recommendations generate karne ka function
 def get_health_advisory(aqi_val: float) -> tuple[str, str]:
     if aqi_val <= 50:
-        return "Good Air Quality", "Air quality is considered satisfactory, and air pollution poses little or no risk."
+        return "Good Air Quality", "Air quality is satisfactory, and air pollution poses little or no risk."
     elif aqi_val <= 100:
         return "Acceptable Air Quality", "Unusually sensitive individuals should consider limiting prolonged outdoor exertion."
     elif aqi_val <= 150:
-        return "Unhealthy for Sensitive Groups", "Members of sensitive groups may experience health effects. The general public is less likely to be affected."
-    return "Unhealthy Air Quality", "Everyone may begin to experience health effects; members of sensitive groups may experience more serious health effects."
+        return "Unhealthy for Sensitive Groups", "Members of sensitive groups may experience health effects."
+    return "Unhealthy Air Quality", "Everyone may begin to experience health effects."
 
 
-import asyncio
 
+
+
+
+# Model predictions ko TelemetryResponse payload mein map karne ka main handler
 def compute_telemetry_response(force_reload: bool = False) -> TelemetryResponse:
-    """Executes model inference and constructs TelemetryResponse payload."""
-    ml_output = run_inference(force_model_reload=force_reload)
+    try:
+        ml_output = inference_mod.run_inference(force_model_reload=force_reload)
+    except Exception as err:
+        raise HTTPException(status_code=503, detail=f"Upstream live telemetry & inference engine error: {err}")
 
     tactical = ml_output.get("hourly_tactical", [])
     strategic = ml_output.get("strategic_3_day", {})
 
-    if not tactical:
-        raise ValueError("Inference engine returned an empty tactical forecast.")
-
-    for horizon_key in ("24h", "48h", "72h"):
-        if horizon_key not in strategic:
-            raise ValueError(f"Inference engine did not return a '{horizon_key}' forecast.")
+    if not tactical or "24h" not in strategic:
+        raise HTTPException(status_code=503, detail="Inference engine returned incomplete tactical or strategic forecast.")
 
     raw_conf = ml_output.get("forecast_confidence")
     dynamic_confidence = int(round(float(raw_conf))) if raw_conf is not None else None
     p_metrics = ml_output.get("pipeline_metrics", {})
     dynamic_completeness = p_metrics.get("completeness") or "N/A"
-    dynamic_accuracy = p_metrics.get("sensor_accuracy") or "N/A"
+    dynamic_accuracy = p_metrics.get("model_residual_confidence") or "N/A"
 
-    current_pm25 = float(tactical[0]["predicted_pm2_5"])
-    current_aqi = round(convert_pm25_to_aqi(current_pm25), 1)
+    current_pm25 = float(ml_output.get("current_pm25", 0.0))
+    current_aqi = float(ml_output.get("current_aqi_val", round(convert_pm25_to_aqi(current_pm25), 1)))
 
     advisory_title, advisory_detail = get_health_advisory(current_aqi)
 
@@ -195,13 +263,12 @@ def compute_telemetry_response(force_reload: bool = False) -> TelemetryResponse:
     f_48h = strategic["48h"]
     f_72h = strategic["72h"]
 
-    if len(tactical) < 3:
-        raise ValueError("Inference engine returned insufficient tactical predictions.")
+    fallback_used = bool(ml_output.get("fallback_used", False))
+    mode_str = str(ml_output.get("mode", "Live Operational Telemetry"))
+    source_str = str(ml_output.get("source", "Open-Meteo Live API"))
 
-    is_stale = ml_output.get("data_freshness_warning", False)
-    feature_store_status = "Stale" if is_stale else "Connected"
+    feature_store_status = "Operational | Live Open-Meteo Telemetry" if not fallback_used else "Offline / Local Artifact Mode"
 
-    # Dynamic AQI Delta & WHO Status calculation
     aqi_delta_str = "► 0.0 vs last observation"
     if len(tactical) >= 2:
         step1_aqi = convert_pm25_to_aqi(float(tactical[0]["predicted_pm2_5"]))
@@ -226,9 +293,13 @@ def compute_telemetry_response(force_reload: bool = False) -> TelemetryResponse:
         healthAdvisory=advisory_title,
         healthDetail=advisory_detail,
         confidenceScore=dynamic_confidence,
-        modelName=f"{ml_output.get('model_name', 'aqi_pm25_predictor')} v{ml_output.get('model_version', 28)}",
+        modelName=f"{ml_output.get('model_name', 'aqi_pm25_predictor')} v{ml_output.get('model_version', 36)}",
         featureStoreStatus=feature_store_status,
-        last_updated=datetime.now().strftime("%b %d, %Y at %I:%M %p PKT"),
+        last_updated=ml_output.get("last_updated"),
+        source=source_str,
+        mode=mode_str,
+        fallback_used=fallback_used,
+        registry_verified=bool(ml_output.get("registry_verified", False)),
         forecasts=[
             ForecastHorizon(
                 horizon="24H",
@@ -278,21 +349,14 @@ def compute_telemetry_response(force_reload: bool = False) -> TelemetryResponse:
         ],
         trendHistory=[
             TrendPoint(
-                time="-12h",
-                aqi=float(round(max(15.0, current_aqi * 0.88), 1)),
-                pm25=float(round(max(5.0, current_pm25 * 0.88), 1)),
-                category=get_aqi_status(max(15.0, current_aqi * 0.88)),
-                categoryColor=get_aqi_color(max(15.0, current_aqi * 0.88)),
+                time=str(obs["time"]),
+                aqi=float(obs["aqi"]),
+                pm25=float(obs["pm25"]),
+                category=get_aqi_status(float(obs["aqi"])),
+                categoryColor=get_aqi_color(float(obs["aqi"])),
                 isForecast=False
-            ),
-            TrendPoint(
-                time="-6h",
-                aqi=float(round(max(18.0, current_aqi * 0.94), 1)),
-                pm25=float(round(max(6.0, current_pm25 * 0.94), 1)),
-                category=get_aqi_status(max(18.0, current_aqi * 0.94)),
-                categoryColor=get_aqi_color(max(18.0, current_aqi * 0.94)),
-                isForecast=False
-            ),
+            ) for obs in ml_output.get("historical_observations", [])[-12:]
+        ] + [
             TrendPoint(
                 time="Now (Observed)",
                 aqi=float(round(current_aqi, 1)),
@@ -302,25 +366,9 @@ def compute_telemetry_response(force_reload: bool = False) -> TelemetryResponse:
                 isForecast=False
             ),
             TrendPoint(
-                time="+6h",
-                aqi=float(round(convert_pm25_to_aqi(tactical[1]["predicted_pm2_5"]), 1)),
-                pm25=float(tactical[1]["predicted_pm2_5"]),
-                category=get_aqi_status(convert_pm25_to_aqi(tactical[1]["predicted_pm2_5"])),
-                categoryColor=get_aqi_color(convert_pm25_to_aqi(tactical[1]["predicted_pm2_5"])),
-                isForecast=True
-            ),
-            TrendPoint(
-                time="+12h",
-                aqi=float(round(convert_pm25_to_aqi(tactical[2]["predicted_pm2_5"]), 1)),
-                pm25=float(tactical[2]["predicted_pm2_5"]),
-                category=get_aqi_status(convert_pm25_to_aqi(tactical[2]["predicted_pm2_5"])),
-                categoryColor=get_aqi_color(convert_pm25_to_aqi(tactical[2]["predicted_pm2_5"])),
-                isForecast=True
-            ),
-            TrendPoint(
                 time="+24h (Day 1)",
                 aqi=float(f_24h["predicted_aqi"]),
-                pm25=float(f_24h["predicted_pm2_5"]),
+                pm25=float(f_24h.get("predicted_pm2_5", 0.0)),
                 category=str(f_24h["status"]),
                 categoryColor=get_aqi_color(f_24h["predicted_aqi"]),
                 isForecast=True
@@ -328,7 +376,7 @@ def compute_telemetry_response(force_reload: bool = False) -> TelemetryResponse:
             TrendPoint(
                 time="+48h (Day 2)",
                 aqi=float(f_48h["predicted_aqi"]),
-                pm25=float(f_48h["predicted_pm2_5"]),
+                pm25=float(f_48h.get("predicted_pm2_5", 0.0)),
                 category=str(f_48h["status"]),
                 categoryColor=get_aqi_color(f_48h["predicted_aqi"]),
                 isForecast=True
@@ -336,15 +384,13 @@ def compute_telemetry_response(force_reload: bool = False) -> TelemetryResponse:
             TrendPoint(
                 time="+72h (Day 3)",
                 aqi=float(f_72h["predicted_aqi"]),
-                pm25=float(f_72h["predicted_pm2_5"]),
+                pm25=float(f_72h.get("predicted_pm2_5", 0.0)),
                 category=str(f_72h["status"]),
                 categoryColor=get_aqi_color(f_72h["predicted_aqi"]),
                 isForecast=True
-            ),
+            )
         ],
-        hotspots=[
-            HotspotStation(**h) for h in ml_output.get("sensor_hotspots", [])
-        ],
+        hotspots=[HotspotStation(**h) for h in ml_output.get("sensor_hotspots", [])],
         shapExplanations=[
             ShapFeature(feature=item.get("feature", "F"), importance=float(item.get("importance", 0.0)))
             for item in ml_output.get("shap_explanations", [])
@@ -363,99 +409,80 @@ def compute_telemetry_response(force_reload: bool = False) -> TelemetryResponse:
         systemMetrics=SystemMetrics(
             completeness=str(dynamic_completeness),
             accuracy=str(dynamic_accuracy),
-            status="System Status: Operational | Hopsworks Synchronized"
+            status=f"System Status: {'Operational | Live Open-Meteo Telemetry' if not fallback_used else 'Offline / Local Artifact Mode'}",
+            registry_verified=bool(ml_output.get("registry_verified", False))
         )
     )
 
-async def _background_telemetry_worker():
-    """Asynchronous background task that periodically refreshes Hopsworks stream telemetry and checks alerts."""
-    while True:
-        try:
-            print("🔄 [Background Worker] Refreshing Hopsworks feature stream & inference payload...")
-            response = await asyncio.to_thread(compute_telemetry_response)
-            _TELEMETRY_CACHE["payload"] = response
-            _TELEMETRY_CACHE["timestamp"] = time.time()
-            print("⚡ [Background Worker] Telemetry payload updated successfully!")
-
-            # Trigger automated email alert dispatcher
-            if response.forecasts and len(response.forecasts) > 0:
-                f24_aqi = response.forecasts[0].aqi
-                await asyncio.to_thread(
-                    dispatch_hazardous_aqi_alerts, 
-                    response.currentAQI, 
-                    f24_aqi, 
-                    response.aqiStatus
-                )
-        except Exception as e:
-            print(f"⚠️ [Background Worker] Refresh note: {e}")
-        await asyncio.sleep(300)  # Refresh every 5 minutes
 
 
-@app.on_event("startup")
-async def startup_event():
-    """Starts the background telemetry refresher thread on FastAPI boot."""
-    try:
-        response = await asyncio.to_thread(compute_telemetry_response)
-        _TELEMETRY_CACHE["payload"] = response
-        _TELEMETRY_CACHE["timestamp"] = time.time()
-        print("⚡ Telemetry cache pre-warmed on startup.")
-    except Exception as e:
-        print(f"Startup pre-warm note: {e}")
-    asyncio.create_task(_background_telemetry_worker())
 
 
+
+# React dashboard ke liye main live telemetry API route
 @app.get("/api/telemetry", response_model=TelemetryResponse)
 def get_live_telemetry(force: bool = False):
-    """
-    Main endpoint called by the React frontend.
-    Returns instantly from cached memory (0-10ms latency) unless force=True.
-    """
     if force or _TELEMETRY_CACHE["payload"] is None:
         try:
-            response = compute_telemetry_response(force_reload=force)
+            response = compute_telemetry_response(force_reload=True)
             _TELEMETRY_CACHE["payload"] = response
             _TELEMETRY_CACHE["timestamp"] = time.time()
             return response
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Inference Engine Error: {str(e)}")
+            raise HTTPException(status_code=503, detail=f"Upstream Telemetry Service Error: {str(e)}")
 
     return _TELEMETRY_CACHE["payload"]
 
 
 
+
+
+
+# Exploratory Data Analysis summary report API route
 @app.get("/api/eda")
 def get_eda_summary():
-    """Returns dynamic EDA statistical metrics and diurnal profile."""
-    import os, json
+    import os, json, time
     eda_json_path = os.path.join("data", "eda_summary.json")
     if os.path.exists(eda_json_path):
-        with open(eda_json_path, "r") as f:
-            return json.load(f)
+        mtime = os.path.getmtime(eda_json_path)
+        if (time.time() - mtime) < 86400:
+            with open(eda_json_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+
     try:
         from src.eda import run_eda
         return run_eda(save_json=True)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to generate EDA summary: {str(e)}")
+        if os.path.exists(eda_json_path):
+            with open(eda_json_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        raise HTTPException(status_code=503, detail=f"EDA analysis refresh note: {str(e)}")
 
 
+
+
+
+
+# Model tournament leaderboard summary API route
 @app.get("/api/tournament")
 def get_tournament_summary():
-    """Returns dynamic multi-model tournament evaluation matrix across candidate estimators and horizons."""
-    import os, json
+    import os, json, time
     t_path = os.path.join("data", "tournament_summary.json")
     if os.path.exists(t_path):
-        with open(t_path, "r") as f:
-            return json.load(f)
-
-    raise HTTPException(
-        status_code=404,
-        detail="Tournament evaluation summary not generated yet. Execute model evaluation pipeline to generate results."
-    )
+        mtime = os.path.getmtime(t_path)
+        with open(t_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data
+    raise HTTPException(status_code=503, detail="Tournament summary pending execution.")
 
 
+
+
+
+
+# User email alert subscription API route
 @app.post("/api/subscribe")
 def subscribe_user_email(req: SubscriptionRequest):
-    """Subscribes user email for hazardous AQI threshold alerts with custom threshold & frequency preferences."""
     import os, json
     email = req.email.strip().lower()
     if "@" not in email or "." not in email:
@@ -474,7 +501,6 @@ def subscribe_user_email(req: SubscriptionRequest):
         except Exception:
             subscribers = []
 
-    # Check if subscriber already exists
     existing_index = -1
     for i, sub in enumerate(subscribers):
         sub_email = sub if isinstance(sub, str) else sub.get("email")
@@ -489,55 +515,32 @@ def subscribe_user_email(req: SubscriptionRequest):
         existing_freq = existing_sub.get("frequency", "6h") if isinstance(existing_sub, dict) else "6h"
 
         if existing_thresh == threshold and existing_freq == frequency:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"This email ({email}) is already subscribed with these exact alert preferences (AQI > {threshold}, {frequency})."
-            )
+            raise HTTPException(status_code=400, detail=f"This email ({email}) is already subscribed with these exact settings.")
         
-        # Update existing subscriber with new settings
         last_sent = existing_sub.get("last_sent", 0.0) if isinstance(existing_sub, dict) else 0.0
-        subscribers[existing_index] = {
-            "email": email,
-            "threshold": threshold,
-            "frequency": frequency,
-            "last_sent": last_sent
-        }
+        subscribers[existing_index] = {"email": email, "threshold": threshold, "frequency": frequency, "last_sent": last_sent}
         is_update = True
     else:
-        # Add new subscriber
-        subscribers.append({
-            "email": email,
-            "threshold": threshold,
-            "frequency": frequency,
-            "last_sent": 0.0
-        })
+        subscribers.append({"email": email, "threshold": threshold, "frequency": frequency, "last_sent": 0.0})
 
     with open(sub_file, "w") as f:
         json.dump(subscribers, f, indent=2)
 
-    # Trigger immediate Welcome or Preference Update Confirmation Email
     welcome_res = send_welcome_email(email, threshold, frequency, is_update=is_update)
+    msg_text = f"Successfully updated alert preferences for {email}!" if is_update else f"Successfully subscribed {email}!"
 
-    msg_text = f"Successfully updated alert preferences for {email} (Threshold: AQI > {threshold}, Frequency: {frequency})!" if is_update else f"Successfully subscribed {email} (Threshold: AQI > {threshold}, Frequency: {frequency})!"
-
-    return {
-        "status": "success", 
-        "message": msg_text,
-        "is_update": is_update,
-        "threshold": threshold,
-        "frequency": frequency,
-        "email_delivery": welcome_res
-    }
+    return {"status": "success", "message": msg_text, "is_update": is_update, "threshold": threshold, "frequency": frequency, "email_delivery": welcome_res}
 
 
+
+
+
+
+# User email alert unsubscription API route
 @app.post("/api/unsubscribe")
 def unsubscribe_user_email(req: SubscriptionRequest):
-    """Unsubscribes a user email from hazardous AQI threshold alerts."""
     import os, json
     email = req.email.strip().lower()
-    if "@" not in email or "." not in email:
-        raise HTTPException(status_code=400, detail="Invalid email format.")
-
     sub_file = os.path.join("data", "subscribers.json")
     if not os.path.exists(sub_file):
         raise HTTPException(status_code=404, detail="No active subscribers found.")
@@ -548,46 +551,24 @@ def unsubscribe_user_email(req: SubscriptionRequest):
     except Exception:
         subscribers = []
 
-    # Find and remove subscriber
-    updated_subscribers = []
-    found = False
-
-    for sub in subscribers:
-        sub_email = sub if isinstance(sub, str) else sub.get("email")
-        if sub_email == email:
-            found = True
-        else:
-            updated_subscribers.append(sub)
-
-    if not found:
-        raise HTTPException(
-            status_code=404, 
-            detail=f"The email address '{email}' was not found in our active subscriber list."
-        )
+    updated_subscribers = [s for s in subscribers if (s if isinstance(s, str) else s.get("email")) != email]
+    if len(updated_subscribers) == len(subscribers):
+        raise HTTPException(status_code=404, detail=f"Email '{email}' not found in active subscriber list.")
 
     with open(sub_file, "w") as f:
         json.dump(updated_subscribers, f, indent=2)
 
-    # Trigger immediate Unsubscribe Confirmation Email
     try:
         from alerts import send_unsubscribe_email
     except ImportError:
         from src.alerts import send_unsubscribe_email
     
     unsub_res = send_unsubscribe_email(email)
-
-    return {
-        "status": "success",
-        "message": f"Successfully unsubscribed {email} from AQI hazard alert dispatches.",
-        "email_delivery": unsub_res
-    }
+    return {"status": "success", "message": f"Successfully unsubscribed {email}.", "email_delivery": unsub_res}
 
 
-@app.get("/api/test-email")
-def test_email_dispatch(email: str = "test@example.com"):
-    """Instant diagnostic endpoint to test SMTP settings from .env file."""
-    res = send_welcome_email(email, threshold=100, frequency="6h")
-    return res
+
+
 
 
 if __name__ == "__main__":

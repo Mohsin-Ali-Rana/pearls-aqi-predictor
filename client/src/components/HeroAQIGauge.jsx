@@ -199,6 +199,27 @@ export default function HeroAQIGauge({ telemetry, isLoading }) {
                 {aqiStatus}
               </div>
             )}
+
+            {/* Health Advisory & Detail Direct DOM Binding */}
+            <div style={{ marginTop: '0.75rem', textAlign: 'center', maxWidth: '95%' }}>
+              {isDataLoading || !telemetry.healthAdvisory ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', alignItems: 'center' }}>
+                  <div style={{ width: '140px', height: '14px' }} className="skeleton-shimmer" />
+                  <div style={{ width: '220px', height: '10px' }} className="skeleton-shimmer" />
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                  <div style={{ fontSize: '0.82rem', fontWeight: '800', color: '#0F172A' }}>
+                    {telemetry.healthAdvisory}
+                  </div>
+                  {telemetry.healthDetail && (
+                    <div style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: '500', lineHeight: 1.35 }}>
+                      {telemetry.healthDetail}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Executive Card Footer */}
@@ -327,7 +348,7 @@ export default function HeroAQIGauge({ telemetry, isLoading }) {
                 <span style={{ fontSize: '1.5rem', fontWeight: '900', color: '#0F172A' }}>{tempVal}</span>
                 <span style={{ fontSize: '0.85rem', fontWeight: '700', color: '#64748B', marginLeft: '0.15rem' }}>°C</span>
               </div>
-              <span style={{ fontSize: '0.72rem', color: '#0D9488', fontWeight: '700' }}>{boundaryCond}</span>
+              <span title="Physical boundary condition derived from wind dynamics" style={{ fontSize: '0.70rem', color: '#0D9488', fontWeight: '700' }}>{boundaryCond}</span>
             </div>
 
             {/* HUMIDITY */}
@@ -342,7 +363,7 @@ export default function HeroAQIGauge({ telemetry, isLoading }) {
                 <span style={{ fontSize: '1.5rem', fontWeight: '900', color: '#0F172A' }}>{humidityVal}</span>
                 <span style={{ fontSize: '0.85rem', fontWeight: '700', color: '#64748B', marginLeft: '0.15rem' }}>%</span>
               </div>
-              <span style={{ fontSize: '0.72rem', color: '#D97706', fontWeight: '700' }}>{aerosolRisk}</span>
+              <span title="Aerosol risk derived from relative humidity" style={{ fontSize: '0.70rem', color: '#D97706', fontWeight: '700' }}>{aerosolRisk}</span>
             </div>
 
             {/* PRESSURE */}
@@ -357,7 +378,7 @@ export default function HeroAQIGauge({ telemetry, isLoading }) {
                 <span style={{ fontSize: '1.5rem', fontWeight: '900', color: '#0F172A' }}>{pressureVal}</span>
                 <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#64748B', marginLeft: '0.15rem' }}>hPa</span>
               </div>
-              <span style={{ fontSize: '0.72rem', color: '#475569', fontWeight: '700' }}>{inversionRisk}</span>
+              <span title="Inversion risk derived from surface pressure" style={{ fontSize: '0.70rem', color: '#475569', fontWeight: '700' }}>{inversionRisk}</span>
             </div>
 
             {/* WIND VECTOR */}

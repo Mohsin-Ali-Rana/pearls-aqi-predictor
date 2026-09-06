@@ -18,33 +18,35 @@ except ImportError:
         HOPSWORKS_API_KEY, HOPSWORKS_PROJECT, HOPSWORKS_HOST, HOPSWORKS_PORT
     )
 
+
+# --- Stage: Historical Backfill Pipeline ---
+# Hopsworks Feature Store mein 2 years (730 days) ka historical features dataset upload karne ka function
 def run_backfill(days: int = 730, start_date: str = None, end_date: str = None):
-    """
-    Historical feature range backfill script.
-    Populates Hopsworks Feature Store with 2-year (730 days) historical feature data.
-    """
     today_utc = datetime.now(timezone.utc)
     if not end_date:
         end_date = today_utc.strftime("%Y-%m-%d")
     if not start_date:
         start_date = (today_utc - timedelta(days=days)).strftime("%Y-%m-%d")
 
-    print(f"=== Starting Historical Backfill Pipeline ===")
+    print("Starting Historical Backfill Pipeline...")
     print(f"Target Period: {start_date} to {end_date} ({days} days)")
     print(f"Location Coordinates: ({LOCATION_LATITUDE}, {LOCATION_LONGITUDE})")
 
-    print("\n1. Fetching historical raw weather & pollution records...")
+    # Historical raw weather aur air quality observations fetch kar rahe hain
+    print("Fetching historical raw weather and pollution records...")
     raw_df = fetch_historical_aqi(LOCATION_LATITUDE, LOCATION_LONGITUDE, start_date, end_date)
     if raw_df.empty:
         raise ValueError(f"No raw historical data returned from API for range {start_date} to {end_date}")
 
     print(f"Fetched {len(raw_df)} raw hourly records.")
 
-    print("\n2. Engineering features & time-series lag variables...")
+    # Historical raw dataset par feature engineering apply kar rahe hain
+    print("Engineering features and time-series lag variables...")
     feature_df = generate_features(raw_df)
     print(f"Engineered feature set contains {len(feature_df)} rows and {len(feature_df.columns)} columns.")
 
-    print("\n3. Connecting to Hopsworks Feature Store...")
+    # Hopsworks feature store ke saath connection
+    print("Connecting to Hopsworks Feature Store...")
     project = hopsworks.login(
         project=HOPSWORKS_PROJECT,
         host=HOPSWORKS_HOST,
@@ -53,7 +55,8 @@ def run_backfill(days: int = 730, start_date: str = None, end_date: str = None):
     )
     fs = project.get_feature_store()
 
-    print("\n4. Getting/Creating Feature Group 'aqi_hourly_features' v2...")
+    # Feature group get ya create kar rahe hain
+    print("Getting or creating Feature Group 'aqi_hourly_features' v2...")
     aqi_fg = fs.get_or_create_feature_group(
         name="aqi_hourly_features",
         version=2,
@@ -63,9 +66,15 @@ def run_backfill(days: int = 730, start_date: str = None, end_date: str = None):
         description="Hourly engineered air quality, meteorological and cyclical time features (Historical Backfill)"
     )
 
-    print("\n5. Backfilling feature dataset to Hopsworks Feature Store...")
+    # 2-year feature dataset ko Hopsworks feature group mein insert kar rahe hain
+    print("Backfilling feature dataset to Hopsworks Feature Store...")
     aqi_fg.insert(feature_df, storage="online", wait=True)
-    print(f"✅ Historical Backfill Complete! Successfully populated {len(feature_df)} rows to Hopsworks Feature Store.")
+    print(f"Historical backfill complete. Successfully populated {len(feature_df)} rows to Hopsworks Feature Store.")
+
+
+
+
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="PEARLS AQI Predictor - Historical Feature Store Backfill Tool")

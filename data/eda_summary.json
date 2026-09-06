@@ -1,0 +1,396 @@
+{
+  "analysis_date": "2026-09-05 21:28:58",
+  "total_observations": 1464,
+  "target_correlations": {
+    "pm2_5": 1.0,
+    "pm10": 0.8648,
+    "nitrogen_dioxide": 0.5637,
+    "relative_humidity_2m": 0.106,
+    "european_aqi": 0.1047,
+    "wind_speed_10m": 0.0296,
+    "surface_pressure": -0.0504,
+    "temperature_2m": -0.1321,
+    "ozone": -0.4107
+  },
+  "full_correlation_matrix": {
+    "pm10": {
+      "pm10": 1.0,
+      "pm2_5": 0.8648,
+      "nitrogen_dioxide": 0.2983,
+      "ozone": -0.1208,
+      "european_aqi": 0.2398,
+      "temperature_2m": 0.1271,
+      "relative_humidity_2m": -0.125,
+      "wind_speed_10m": 0.0707,
+      "surface_pressure": -0.0112
+    },
+    "pm2_5": {
+      "pm10": 0.8648,
+      "pm2_5": 1.0,
+      "nitrogen_dioxide": 0.5637,
+      "ozone": -0.4107,
+      "european_aqi": 0.1047,
+      "temperature_2m": -0.1321,
+      "relative_humidity_2m": 0.106,
+      "wind_speed_10m": 0.0296,
+      "surface_pressure": -0.0504
+    },
+    "nitrogen_dioxide": {
+      "pm10": 0.2983,
+      "pm2_5": 0.5637,
+      "nitrogen_dioxide": 1.0,
+      "ozone": -0.8845,
+      "european_aqi": -0.2835,
+      "temperature_2m": -0.4735,
+      "relative_humidity_2m": 0.3937,
+      "wind_speed_10m": -0.1189,
+      "surface_pressure": 0.0376
+    },
+    "ozone": {
+      "pm10": -0.1208,
+      "pm2_5": -0.4107,
+      "nitrogen_dioxide": -0.8845,
+      "ozone": 1.0,
+      "european_aqi": 0.6271,
+      "temperature_2m": 0.6935,
+      "relative_humidity_2m": -0.6137,
+      "wind_speed_10m": 0.0616,
+      "surface_pressure": -0.0059
+    },
+    "european_aqi": {
+      "pm10": 0.2398,
+      "pm2_5": 0.1047,
+      "nitrogen_dioxide": -0.2835,
+      "ozone": 0.6271,
+      "european_aqi": 1.0,
+      "temperature_2m": 0.6068,
+      "relative_humidity_2m": -0.5941,
+      "wind_speed_10m": -0.1215,
+      "surface_pressure": 0.0683
+    },
+    "temperature_2m": {
+      "pm10": 0.1271,
+      "pm2_5": -0.1321,
+      "nitrogen_dioxide": -0.4735,
+      "ozone": 0.6935,
+      "european_aqi": 0.6068,
+      "temperature_2m": 1.0,
+      "relative_humidity_2m": -0.9246,
+      "wind_speed_10m": 0.032,
+      "surface_pressure": -0.2703
+    },
+    "relative_humidity_2m": {
+      "pm10": -0.125,
+      "pm2_5": 0.106,
+      "nitrogen_dioxide": 0.3937,
+      "ozone": -0.6137,
+      "european_aqi": -0.5941,
+      "temperature_2m": -0.9246,
+      "relative_humidity_2m": 1.0,
+      "wind_speed_10m": -0.0485,
+      "surface_pressure": 0.2745
+    },
+    "wind_speed_10m": {
+      "pm10": 0.0707,
+      "pm2_5": 0.0296,
+      "nitrogen_dioxide": -0.1189,
+      "ozone": 0.0616,
+      "european_aqi": -0.1215,
+      "temperature_2m": 0.032,
+      "relative_humidity_2m": -0.0485,
+      "wind_speed_10m": 1.0,
+      "surface_pressure": -0.2584
+    },
+    "surface_pressure": {
+      "pm10": -0.0112,
+      "pm2_5": -0.0504,
+      "nitrogen_dioxide": 0.0376,
+      "ozone": -0.0059,
+      "european_aqi": 0.0683,
+      "temperature_2m": -0.2703,
+      "relative_humidity_2m": 0.2745,
+      "wind_speed_10m": -0.2584,
+      "surface_pressure": 1.0
+    }
+  },
+  "hourly_diurnal_profile": [
+    {
+      "hour": "00:00",
+      "pm25": 50.2,
+      "aqi": 63.9,
+      "temp": 27.92,
+      "wind": 8.66
+    },
+    {
+      "hour": "01:00",
+      "pm25": 49.05,
+      "aqi": 62.43,
+      "temp": 27.31,
+      "wind": 7.82
+    },
+    {
+      "hour": "02:00",
+      "pm25": 46.81,
+      "aqi": 60.72,
+      "temp": 26.74,
+      "wind": 7.83
+    },
+    {
+      "hour": "03:00",
+      "pm25": 43.97,
+      "aqi": 59.02,
+      "temp": 26.31,
+      "wind": 7.73
+    },
+    {
+      "hour": "04:00",
+      "pm25": 41.72,
+      "aqi": 57.48,
+      "temp": 25.99,
+      "wind": 7.03
+    },
+    {
+      "hour": "05:00",
+      "pm25": 42.36,
+      "aqi": 57.36,
+      "temp": 26.03,
+      "wind": 7.19
+    },
+    {
+      "hour": "06:00",
+      "pm25": 41.64,
+      "aqi": 56.03,
+      "temp": 25.93,
+      "wind": 6.98
+    },
+    {
+      "hour": "07:00",
+      "pm25": 39.26,
+      "aqi": 54.15,
+      "temp": 26.96,
+      "wind": 5.65
+    },
+    {
+      "hour": "08:00",
+      "pm25": 34.39,
+      "aqi": 53.85,
+      "temp": 28.35,
+      "wind": 5.56
+    },
+    {
+      "hour": "09:00",
+      "pm25": 33.04,
+      "aqi": 61.1,
+      "temp": 29.49,
+      "wind": 5.83
+    },
+    {
+      "hour": "10:00",
+      "pm25": 33.6,
+      "aqi": 77.62,
+      "temp": 30.56,
+      "wind": 6.2
+    },
+    {
+      "hour": "11:00",
+      "pm25": 33.73,
+      "aqi": 94.23,
+      "temp": 31.33,
+      "wind": 6.63
+    },
+    {
+      "hour": "12:00",
+      "pm25": 33.25,
+      "aqi": 99.36,
+      "temp": 32.2,
+      "wind": 6.71
+    },
+    {
+      "hour": "13:00",
+      "pm25": 32.31,
+      "aqi": 96.98,
+      "temp": 32.73,
+      "wind": 6.96
+    },
+    {
+      "hour": "14:00",
+      "pm25": 31.42,
+      "aqi": 93.33,
+      "temp": 33.0,
+      "wind": 7.1
+    },
+    {
+      "hour": "15:00",
+      "pm25": 30.47,
+      "aqi": 92.39,
+      "temp": 33.03,
+      "wind": 7.04
+    },
+    {
+      "hour": "16:00",
+      "pm25": 29.93,
+      "aqi": 90.07,
+      "temp": 32.78,
+      "wind": 8.22
+    },
+    {
+      "hour": "17:00",
+      "pm25": 30.74,
+      "aqi": 76.21,
+      "temp": 32.82,
+      "wind": 8.14
+    },
+    {
+      "hour": "18:00",
+      "pm25": 32.46,
+      "aqi": 62.38,
+      "temp": 31.7,
+      "wind": 8.22
+    },
+    {
+      "hour": "19:00",
+      "pm25": 37.68,
+      "aqi": 57.57,
+      "temp": 30.34,
+      "wind": 8.37
+    },
+    {
+      "hour": "20:00",
+      "pm25": 42.42,
+      "aqi": 61.23,
+      "temp": 29.47,
+      "wind": 9.01
+    },
+    {
+      "hour": "21:00",
+      "pm25": 45.6,
+      "aqi": 63.46,
+      "temp": 28.82,
+      "wind": 8.28
+    },
+    {
+      "hour": "22:00",
+      "pm25": 48.19,
+      "aqi": 64.54,
+      "temp": 28.38,
+      "wind": 7.82
+    },
+    {
+      "hour": "23:00",
+      "pm25": 50.37,
+      "aqi": 64.92,
+      "temp": 28.6,
+      "wind": 8.45
+    }
+  ],
+  "outlier_thresholds": {
+    "pm10": {
+      "max": 150.9,
+      "p99": 102.4
+    },
+    "pm2_5": {
+      "max": 95.0,
+      "p99": 75.0
+    },
+    "nitrogen_dioxide": {
+      "max": 126.0,
+      "p99": 112.01
+    },
+    "ozone": {
+      "max": 216.0,
+      "p99": 204.0
+    }
+  },
+  "statistical_summary": {
+    "pm10": {
+      "count": 1464.0,
+      "mean": 50.52,
+      "std": 19.73,
+      "min": 7.2,
+      "25%": 35.9,
+      "50%": 49.1,
+      "75%": 63.3,
+      "max": 150.9
+    },
+    "pm2_5": {
+      "count": 1464.0,
+      "mean": 38.94,
+      "std": 14.34,
+      "min": 6.5,
+      "25%": 28.3,
+      "50%": 37.65,
+      "75%": 47.62,
+      "max": 95.0
+    },
+    "nitrogen_dioxide": {
+      "count": 1464.0,
+      "mean": 30.51,
+      "std": 28.25,
+      "min": 0.0,
+      "25%": 6.18,
+      "50%": 21.5,
+      "75%": 48.1,
+      "max": 126.0
+    },
+    "ozone": {
+      "count": 1464.0,
+      "mean": 98.98,
+      "std": 60.31,
+      "min": 0.0,
+      "25%": 49.0,
+      "50%": 97.0,
+      "75%": 154.25,
+      "max": 216.0
+    },
+    "european_aqi": {
+      "count": 1464.0,
+      "mean": 70.01,
+      "std": 19.71,
+      "min": 37.0,
+      "25%": 56.0,
+      "50%": 65.0,
+      "75%": 80.0,
+      "max": 136.0
+    },
+    "temperature_2m": {
+      "count": 1464.0,
+      "mean": 29.45,
+      "std": 3.17,
+      "min": 21.2,
+      "25%": 26.9,
+      "50%": 29.3,
+      "75%": 31.9,
+      "max": 38.3
+    },
+    "relative_humidity_2m": {
+      "count": 1464.0,
+      "mean": 72.39,
+      "std": 13.95,
+      "min": 33.0,
+      "25%": 62.0,
+      "50%": 72.0,
+      "75%": 84.0,
+      "max": 97.0
+    },
+    "wind_speed_10m": {
+      "count": 1464.0,
+      "mean": 7.39,
+      "std": 4.32,
+      "min": 0.0,
+      "25%": 4.0,
+      "50%": 6.6,
+      "75%": 10.2,
+      "max": 24.2
+    },
+    "surface_pressure": {
+      "count": 1464.0,
+      "mean": 950.04,
+      "std": 2.25,
+      "min": 943.8,
+      "25%": 948.6,
+      "50%": 950.0,
+      "75%": 951.5,
+      "max": 958.1
+    }
+  }
+}

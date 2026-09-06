@@ -491,15 +491,15 @@ export default function MLOpsTelemetryBar({ systemMetrics, modelName, featureSto
           <span style={{ fontWeight: '800', color: '#0D9488' }}>Data:</span> {completeness}
         </span>
 
-        {/* Accuracy Pill */}
+        {/* Residual Confidence Pill */}
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', backgroundColor: '#F0F9FF', border: '1px solid #BAE6FD', color: '#0369A1', fontWeight: '700', padding: '0.2rem 0.6rem', borderRadius: '0.4rem' }}>
-          <span style={{ fontWeight: '800', color: '#0284C7' }}>Accuracy:</span> {accuracy}
+          <span style={{ fontWeight: '800', color: '#0284C7' }}>Residual Conf:</span> {accuracy}
         </span>
 
         {/* Stream Pipeline Pill */}
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', backgroundColor: isConnected ? '#ECFDF5' : '#FEF2F2', border: `1px solid ${isConnected ? '#A7F3D0' : '#FCA5A5'}`, color: isConnected ? '#047857' : '#DC2626', fontWeight: '700', padding: '0.2rem 0.6rem', borderRadius: '0.4rem' }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', backgroundColor: isConnected ? '#ECFDF5' : '#FEF3C7', border: `1px solid ${isConnected ? '#A7F3D0' : '#FDE68A'}`, color: isConnected ? '#047857' : '#D97706', fontWeight: '700', padding: '0.2rem 0.6rem', borderRadius: '0.4rem' }}>
           <Radio size={12} className={isConnected ? 'radar-pulse' : ''} />
-          {isConnected ? 'Stream Active' : 'Stale Stream'}
+          {isConnected ? 'Stream Active · Hopsworks Synchronized' : 'Offline / Local Artifact Mode'}
         </span>
 
         {/* Active Registry Model Pill */}
@@ -511,9 +511,9 @@ export default function MLOpsTelemetryBar({ systemMetrics, modelName, featureSto
       </div>
 
       {/* Right: Operational Pulse Badge */}
-      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', color: isConnected ? '#047857' : '#DC2626', fontWeight: '800', fontSize: '0.74rem' }}>
-        <span className="pulse-dot" style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: isConnected ? '#10B981' : '#EF4444', flexShrink: 0 }} />
-        {displayStatus}
+      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', color: isConnected ? '#047857' : '#D97706', fontWeight: '800', fontSize: '0.74rem' }}>
+        <span className="pulse-dot" style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: isConnected ? '#10B981' : '#F59E0B', flexShrink: 0 }} />
+        {isConnected ? displayStatus : 'Offline / Local Fallback Mode'}
       </div>
     </div>
   );

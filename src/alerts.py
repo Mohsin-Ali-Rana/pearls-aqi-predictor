@@ -15,8 +15,9 @@ except ImportError:
 _LAST_ALERT_TIME = 0.0
 ALERT_COOLDOWN_SECONDS = 3600  # 1 hour cooldown between email blasts
 
+
+# User preference ke hisaab se cooldown duration in seconds calculate karne ka function
 def get_cooldown_seconds(freq_str: str) -> float:
-    """Returns cooldown duration in seconds based on user preference."""
     if freq_str == "24h" or freq_str == "daily":
         return 86400.0  # 24 hours
     elif freq_str == "6h":
@@ -24,6 +25,11 @@ def get_cooldown_seconds(freq_str: str) -> float:
     return 3600.0       # 1 hour default
 
 
+
+
+
+
+# Welcome aur subscription update email ke liye executive HTML layout generate karne ka builder
 def build_welcome_html_email(recipient_email: str, location_name: str, threshold: int, frequency: str, is_update: bool = False) -> str:
     freq_label = "Max 1 alert per 6 hours" if frequency == "6h" else ("Max 1 alert per day" if frequency == "24h" else "Max 1 alert per hour")
     header_title = "Preferences Updated" if is_update else "Subscription Confirmed"
@@ -120,6 +126,11 @@ def build_welcome_html_email(recipient_email: str, location_name: str, threshold
 </html>"""
 
 
+
+
+
+
+# Hazardous AQI threshold breach email alerts ke liye HTML layout builder
 def build_alert_html_email(recipient_email: str, location_name: str, current_aqi: float, forecast_24h_aqi: float, aqi_status: str, threshold: int) -> str:
     return f"""<!DOCTYPE html>
 <html>
@@ -207,11 +218,12 @@ def build_alert_html_email(recipient_email: str, location_name: str, current_aqi
 </html>"""
 
 
+
+
+
+
+# Subscriber threshold check karke automated SMTP email alert dispatch karne ka function
 def dispatch_hazardous_aqi_alerts(current_aqi: float, forecast_24h_aqi: float, aqi_status: str) -> dict:
-    """
-    Checks subscriber list and dispatches automated email alerts based on each subscriber's
-    custom threshold and frequency cooldown settings.
-    """
     sub_file = os.path.join("data", "subscribers.json")
     if not os.path.exists(sub_file):
         return {"status": "skipped", "reason": "No subscriber database found"}
@@ -312,10 +324,12 @@ def dispatch_hazardous_aqi_alerts(current_aqi: float, forecast_24h_aqi: float, a
         return {"status": "error", "reason": str(e)}
 
 
+
+
+
+
+# Subscribed new user ko welcome email send karne ka handler
 def send_welcome_email(recipient_email: str, threshold: int = 100, frequency: str = "6h", is_update: bool = False) -> dict:
-    """
-    Sends an immediate executive welcome or preference update confirmation email.
-    """
     if not (SMTP_HOST and SMTP_USER and SMTP_PASSWORD):
         print(f"[Welcome Email] SMTP credentials unconfigured in .env. Dry-run mode for {recipient_email}.")
         return {"status": "dry_run", "message": "SMTP credentials unconfigured."}
@@ -357,6 +371,11 @@ def send_welcome_email(recipient_email: str, threshold: int = 100, frequency: st
         return {"status": "error", "reason": str(e)}
 
 
+
+
+
+
+# Unsubscribe confirmation email ke liye HTML builder layout
 def build_unsubscribe_html_email(recipient_email: str, location_name: str) -> str:
     return f"""<!DOCTYPE html>
 <html>
@@ -421,10 +440,12 @@ def build_unsubscribe_html_email(recipient_email: str, location_name: str) -> st
 </html>"""
 
 
+
+
+
+
+# Unsubscribe user ko confirmation email send karne ka handler
 def send_unsubscribe_email(recipient_email: str) -> dict:
-    """
-    Sends an immediate unsubscription confirmation email to the user.
-    """
     if not (SMTP_HOST and SMTP_USER and SMTP_PASSWORD):
         print(f"[Unsubscribe Email] SMTP credentials unconfigured in .env. Dry-run mode for {recipient_email}.")
         return {"status": "dry_run", "message": "SMTP credentials unconfigured."}

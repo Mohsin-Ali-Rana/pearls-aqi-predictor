@@ -123,15 +123,24 @@ export default function App() {
   };
 
   useEffect(() => {
-    fetchTelemetryData(false, false);
-    fetchEdaData();
+    let isMounted = true;
+    const initData = async () => {
+      await fetchTelemetryData(false, false);
+      if (isMounted) {
+        await fetchEdaData();
+      }
+    };
+    initData();
 
     // Quiet background polling every 30 seconds
     const pollTimer = setInterval(() => {
       fetchTelemetryData(false, true);
     }, 30000);
 
-    return () => clearInterval(pollTimer);
+    return () => {
+      isMounted = false;
+      clearInterval(pollTimer);
+    };
   }, []);
 
   const scrollToAlertDispatcher = () => {
@@ -344,7 +353,7 @@ export default function App() {
             <ChevronRight size={16} color="#0D9488" />
           </motion.button>
 
-          {/* Idea 4: Interactive Atmospheric Globe / Satellite Radar Orb Widget */}
+          {/* Idea 4: Interactive Atmospheric Globe / NWP Atmospheric Grid Orb Widget */}
           <div style={{
             background: 'linear-gradient(135deg, #F0FDFA 0%, #E0F2FE 100%)',
             padding: '0.85rem 0.95rem',
@@ -407,11 +416,11 @@ export default function App() {
               </div>
             </div>
 
-            {/* Label & Live Satellite Status */}
+            {/* Label & Live NWP Atmospheric Grid Status */}
             <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ fontSize: '0.74rem', fontWeight: '900', color: '#0F172A', letterSpacing: '-0.01em' }}>
-                  SATELLITE RADAR
+                  NWP ATMOSPHERIC GRID
                 </span>
                 <motion.span
                   animate={{ opacity: [1, 0.3, 1] }}
@@ -426,7 +435,7 @@ export default function App() {
                 />
               </div>
               <div style={{ fontSize: '0.62rem', fontWeight: '700', color: '#0D9488', marginTop: '0.1rem', letterSpacing: '0.02em' }}>
-                Aerosol Observation Active
+                Grid Observation Active
               </div>
             </div>
           </div>
@@ -592,7 +601,7 @@ export default function App() {
                   <Radio size={20} color="#0D9488" className="radar-pulse" />
                   <div>
                     <span style={{ fontSize: '0.88rem', fontWeight: '800', color: '#0F172A' }}>
-                      Querying Open-Meteo Satellite Streams & Hopsworks Feature Store V2...
+                      Querying Open-Meteo NWP Atmospheric Grid & Hopsworks Feature Store V2...
                     </span>
                     <p style={{ margin: '0.15rem 0 0 0', fontSize: '0.75rem', color: '#64748B' }}>
                       Re-calibrating direct 72-hour multi-horizon state vectors for Wah Cantt / Taxila grid
