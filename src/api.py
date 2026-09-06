@@ -34,13 +34,11 @@ app = FastAPI(
 
 @app.middleware("http")
 async def add_cors_headers(request: Request, call_next):
-    origin = request.headers.get("origin", "*")
     if request.method == "OPTIONS":
         response = Response(status_code=200)
-        response.headers["Access-Control-Allow-Origin"] = origin if origin else "*"
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS, PUT, DELETE, PATCH"
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "*"
         response.headers["Access-Control-Allow-Headers"] = "*"
-        response.headers["Access-Control-Allow-Credentials"] = "true"
         return response
 
     try:
@@ -51,10 +49,9 @@ async def add_cors_headers(request: Request, call_next):
             content={"detail": "Internal Server Error", "error": str(exc)}
         )
 
-    response.headers["Access-Control-Allow-Origin"] = origin if origin else "*"
-    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS, PUT, DELETE, PATCH"
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "*"
     response.headers["Access-Control-Allow-Headers"] = "*"
-    response.headers["Access-Control-Allow-Credentials"] = "true"
     return response
 
 @app.exception_handler(Exception)
