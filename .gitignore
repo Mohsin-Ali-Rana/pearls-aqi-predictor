@@ -21,3 +21,5 @@ src/__pycache__/
 Thumbs.db
 *.log
 tmp_*
+*.docx
+*.doc

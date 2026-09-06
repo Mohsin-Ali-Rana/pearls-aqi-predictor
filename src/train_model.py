@@ -59,7 +59,7 @@ def train_evaluate_and_register_best_model():
             )
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
             fut = executor.submit(_hw_login)
-            project = fut.result(timeout=3.0)
+            project = fut.result(timeout=15.0)
 
         fs = project.get_feature_store()
         try:
@@ -78,7 +78,7 @@ def train_evaluate_and_register_best_model():
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
             fut = executor.submit(_read_fg)
-            df = fut.result(timeout=4.0)
+            df = fut.result(timeout=20.0)
     except Exception as e:
         print(f"Feature store query note ({e}). Loading dataset from 'data/features.parquet'...")
         if os.path.exists(os.path.join("data", "features.parquet")):

@@ -4,5 +4,11 @@
     "threshold": 200,
     "frequency": "6h",
     "last_sent": 0.0
+  },
+  {
+    "email": "test_analyst_qa@wah-industrial.org",
+    "threshold": 100,
+    "frequency": "6h",
+    "last_sent": 0.0
   }
 ]

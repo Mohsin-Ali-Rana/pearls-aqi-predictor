@@ -106,8 +106,11 @@ export default function App() {
           setTimeout(() => setSyncProgress(0), 400);
         }, 2500);
       } else {
-        setSyncProgress(50);
-        console.warn("Telemetry API offline or starting up.");
+        setSyncProgress(75);
+        console.warn("Telemetry API starting up on cloud container. Retrying background sync...");
+        setTimeout(() => {
+          fetchTelemetryData(false, false);
+        }, 3000);
       }
     }
   };

@@ -1,8 +1,8 @@
-# ENTERPRISE TECHNICAL PROJECT REPORT
+# TECHNICAL PROJECT REPORT
 
 **PEARLS AQI PREDICTOR**  
 *Proactive Environmental Air Quality Telemetry & Multi-Horizon AI Forecasting Engine*  
-**Production Engineering, Architecture Blueprint & MLOps Infrastructure Report**  
+**Software Engineering, System Architecture & MLOps Infrastructure Report**  
 _________________________________________________________________________________
 
 ### Document Metadata & Control Block
@@ -10,11 +10,10 @@ ________________________________________________________________________________
 | Metadata Field | Value / Details |
 | :--- | :--- |
 | **System Name** | PEARLS AQI Predictor (Atmospheric Intelligence Platform) |
-| **Target Deployment Zone** | Wah Cantt & Taxila Industrial-Urban Corridor ($33.77^\circ\text{N}, 72.75^\circ\text{E}$) |
-| **Document Type** | Comprehensive Software Engineering & MLOps Final Technical Report |
-| **Document Classification** | Technical Engineering Documentation (Enterprise Standard) |
+| **Target Deployment Zone** | Wah Cantt & Taxila Corridor ($33.77^\circ\text{N}, 72.75^\circ\text{E}$) |
+| **Document Type** | Comprehensive Software Engineering & MLOps Project Report |
 | **Version & Status** | Version 1.0.0 — Production Release (Validated & Deployed) |
-| **Author / Lead Engineer** | Mohsin Ali (CAX-OL-2026-267) |
+| **Author** | Mohsin Ali (Software Engineer) |
 | **Technology Stack** | Python 3.11, FastAPI, LightGBM, Hopsworks Feature Store v2, Open-Meteo API, React 19, Vite, Recharts |
 | **Repository URL** | https://github.com/Mohsin-Ali-Rana/pearls-aqi-predictor |
 | **Production Backend URL** | https://pearls-aqi-predictor-production.up.railway.app |
@@ -22,9 +21,9 @@ ________________________________________________________________________________
 
 ---
 
-### Revision & Sign-Off History
+### Revision & Release History
 
-| Version | Date | Primary Author | Description of Changes / Release Scope |
+| Version | Date | Author | Description of Release Scope |
 | :--- | :--- | :--- | :--- |
 | **v0.1-Alpha** | August 15, 2026 | Mohsin Ali | Initial data ingestion pipeline & single-step baseline LightGBM model. |
 | **v0.8-Beta** | August 28, 2026 | Mohsin Ali | Integration of Hopsworks Feature Store v2, 3-Direct Multi-Horizon architecture, and React dashboard. |
@@ -34,18 +33,18 @@ ________________________________________________________________________________
 
 ## 1. Executive Summary
 
-### 1.1 Strategic Context & Business Purpose
-Ambient air pollution represents one of the most pressing public health and environmental hazards across South Asia. In industrial-urban corridors such as **Wah Cantt and Taxila, Pakistan**, high concentrations of fine particulate matter ($PM_{2.5}$ and $PM_{10}$) driven by industrial emissions, vehicular exhaust, and seasonal atmospheric inversions lead to severe cardiorespiratory illnesses. Effective public health intervention requires proactive, early-warning atmospheric intelligence rather than reactive, delayed reporting.
+### 1.1 Context & Project Purpose
+Ambient air pollution represents a major public health and environmental challenge across urban and industrial regions in South Asia. In industrial-urban corridors such as **Wah Cantt and Taxila, Pakistan**, high concentrations of fine particulate matter ($PM_{2.5}$ and $PM_{10}$) driven by industrial emissions, vehicular traffic, and seasonal atmospheric inversions lead to severe respiratory and cardiovascular health risks. Effective public health protection requires early-warning atmospheric intelligence rather than reactive, delayed reporting.
 
-The **PEARLS AQI Predictor** is an enterprise-grade, production-deployed machine learning operations (MLOps) platform designed to deliver real-time atmospheric telemetry and direct multi-horizon ($+24\text{h}$, $+48\text{h}$, $+72\text{h}$) air quality forecasting. By combining continuous satellite and station data ingestion with advanced gradient-boosted decision tree ensembles and feature store synchronization, PEARLS provides municipal authorities, industrial planners, health administrators, and local citizens with actionable, predictive insights into future air quality states.
+The **PEARLS AQI Predictor** is a machine learning operations (MLOps) platform designed to deliver real-time atmospheric telemetry and direct multi-horizon ($+24\text{h}$, $+48\text{h}$, $+72\text{h}$) air quality forecasting. By combining continuous satellite and station data ingestion with gradient-boosted decision tree ensembles and cloud feature store synchronization, PEARLS provides municipal authorities, health administrators, and local citizens with actionable, predictive insights into future air quality states.
 
 ### 1.2 Core System Capabilities
-1. **Direct Multi-Horizon AI Engine:** Deploys three specialized, independent LightGBM regressor models (`model_24h`, `model_48h`, `model_72h`) to predict $PM_{2.5}$ concentrations shifted exactly 24, 48, and 72 hours into the future, eliminating the severe error accumulation inherent in traditional recursive forecasting.
-2. **Automated MLOps Feature Pipeline:** Ingests live atmospheric parameters (temperature, relative humidity, surface pressure, wind vectors, criteria pollutants) via Open-Meteo Numerical Weather Prediction (NWP) feeds and synchronizes 34 engineered features with the **Hopsworks Online Feature Store (v2)**.
-3. **Mathematical Persistence Benchmark:** Enforces automated model promotion gating by continuously evaluating AI predictions against a naive persistence baseline ($t+H$), requiring a minimum $\ge 15\%$ Root Mean Squared Error (RMSE) reduction for production artifact deployment.
+1. **Direct Multi-Horizon AI Engine:** Deploys three specialized, independent LightGBM regressor models (`model_24h`, `model_48h`, `model_72h`) to predict $PM_{2.5}$ concentrations shifted exactly 24, 48, and 72 hours into the future, eliminating error accumulation inherent in traditional recursive forecasting.
+2. **Automated MLOps Feature Pipeline:** Ingests live atmospheric parameters (temperature, relative humidity, surface pressure, wind vectors, criteria pollutants) via Open-Meteo Numerical Weather Prediction (NWP) feeds and synchronizes engineered features with the **Hopsworks Online Feature Store (v2)**.
+3. **Mathematical Persistence Benchmark:** Enforces automated model promotion gating by continuously evaluating AI predictions against a naive persistence baseline ($t+H$), requiring a minimum Root Mean Squared Error (RMSE) reduction for production artifact deployment.
 4. **Explainable AI (XAI) Transparency:** Incorporates game-theoretic SHAP (SHapley Additive exPlanations) attribution engines to compute both global feature importance rankings and local point-in-time contribution values for every prediction.
-5. **High-Performance Serving Infrastructure:** Utilizes an asynchronous FastAPI backend featuring sub-10ms response caching (`_TELEMETRY_CACHE`) and dual-tier offline parquet fallback (`data/features.parquet`) to guarantee 99.9% uptime.
-6. **Executive Command Dashboard:** Built on React 19 and Vite with custom CSS design tokens, offering half-arc AQI gauges, continuous 3-day trajectory charts with EPA threshold reference bands, multi-model tournament leaderboards, spatial hotspot monitoring, and automated email alert dispatching.
+5. **High-Performance Serving Infrastructure:** Utilizes an asynchronous FastAPI backend featuring sub-second response caching (`_TELEMETRY_CACHE`) and dual-tier offline parquet fallback (`data/features.parquet`) to guarantee high availability.
+6. **Command Dashboard:** Built on React 19 and Vite with custom CSS design tokens, offering half-arc AQI gauges, continuous 3-day trajectory charts with EPA threshold reference bands, multi-model tournament leaderboards, spatial hotspot monitoring, and automated email alert dispatching.
 
 ---
 
@@ -75,29 +74,29 @@ Where:
 ### 3.1 The Multi-Step Forecasting Error Accumulation Problem
 Classical time-series forecasting frameworks typically apply **Recursive Multi-Step Forecasting**, wherein a single model predicts $\hat{y}_{t+1}$, and this predicted value is recursively appended to the feature vector to predict $\hat{y}_{t+2}$, continuing up to step $t+H$. 
 
-In atmospheric modeling, recursive feeding causes **exponential error propagation**. A slight positive bias in the 1-hour prediction alters rolling moving averages and lag features, causing predictions at 48 and 72 hours to compound variance exponentially, leading to catastrophic model drift.
+In atmospheric modeling, recursive feeding causes **exponential error propagation**. A slight positive bias in the 1-hour prediction alters rolling moving averages and lag features, causing predictions at 48 and 72 hours to compound variance exponentially, leading to model drift.
 
 ### 3.2 System Engineering Objectives
-To overcome these structural limitations, PEARLS AQI Predictor was engineered to fulfill six primary non-negotiable requirements:
+To overcome these structural limitations, PEARLS AQI Predictor was engineered to fulfill core technical requirements:
 
 | Requirement Identifier | Core Objective | Target Engineering Metric / Acceptance Criteria |
 | :--- | :--- | :--- |
 | **REQ-ENG-01** | Direct Multi-Horizon Architecture | Train 3 separate models targeting $y_{t+24}$, $y_{t+48}$, $y_{t+72}$ directly with zero recursive feedback. |
-| **REQ-ENG-02** | Hopsworks Feature Store Sync | Ingest and serve feature vectors from Hopsworks Online Feature Store (`aqi_hourly_features` v2) under $3.0\text{s}$. |
-| **REQ-ENG-03** | Persistence Lift Auto-Gate | Achieve $\ge 15\%$ RMSE reduction over naive persistence ($t+H$) before validating model artifacts. |
-| **REQ-ENG-04** | Sub-100ms API Response Latency | Serve cached telemetry responses in $< 10\text{ms}$ and cold compute responses in $< 1.0\text{s}$. |
+| **REQ-ENG-02** | Hopsworks Feature Store Sync | Ingest and serve feature vectors from Hopsworks Online Feature Store (`aqi_hourly_features` v2). |
+| **REQ-ENG-03** | Persistence Lift Auto-Gate | Achieve RMSE reduction over naive persistence ($t+H$) before validating model artifacts. |
+| **REQ-ENG-04** | Low Latency API Response | Serve cached telemetry responses in sub-second time. |
 | **REQ-ENG-05** | High Availability & Resilience | Implement dual-tier fallback to local warm parquet snapshots (`features.parquet`) on feature store timeouts. |
-| **REQ-ENG-06** | Universal Responsive UI | Guarantee zero visual clipping across Desktop ($1280\text{px}+$ fixed sidebar) and Mobile ($< 1024\text{px}$ slide drawer). |
+| **REQ-ENG-06** | Universal Responsive UI | Guarantee clean rendering across Desktop ($1280\text{px}+$ sidebar) and Mobile ($< 1024\text{px}$ slide drawer). |
 
 ---
 
 ## 4. System Architecture & Component Blueprint
 
-### 4.1 High-Level Tier-3 Architecture
-PEARLS AQI Predictor employs a three-tier decoupling strategy isolating Data Ingestion & Storage, Analytical Inference & API Serving, and Client Presentation.
+### 4.1 Multi-Tier System Architecture
+PEARLS AQI Predictor employs a three-tier architecture isolating Data Ingestion & Storage, Analytical Inference & API Serving, and Client Presentation.
 
-`[System Architecture Diagram Placeholder]`  
-*Caption: Figure 4.1 — Enterprise Multi-Tier MLOps System Architecture showing Open-Meteo Ingestion, Hopsworks Feature Store, FastAPI REST Serving Layer, LightGBM Inference Engine, and React 19 Client.*
+![Main Command Center Interface](Project_Screenshots/Main%20Front%20Landing%20.png)  
+*Figure 4.1 — PEARLS AQI Command Center Overview featuring target location telemetry, hero AQI gauge, and 3-day forecast splines.*
 
 ```
 +-----------------------------------------------------------------------------------+
@@ -116,7 +115,7 @@ PEARLS AQI Predictor employs a three-tier decoupling strategy isolating Data Ing
 |  +-----------------------------------------------------------------------------+  |
 |  |  FastAPI REST Server (src/api.py)                                           |  |
 |  |  - Endpoints: /api/telemetry, /api/eda, /api/tournament, /api/subscribe       |  |
-|  |  - In-Memory Response Cache (_TELEMETRY_CACHE, TTL 120s)                    |  |
+|  |  - In-Memory Response Cache (_TELEMETRY_CACHE, TTL 5s)                        |  |
 |  |  - Offline Warm Artifact Fallback (data/features.parquet)                    |  |
 |  +------------------------------------+----------------------------------------+  |
 |                                       |                                           |
@@ -146,21 +145,21 @@ PEARLS AQI Predictor employs a three-tier decoupling strategy isolating Data Ing
 
 | Subsystem | Selected Technology | Alternative Evaluated | Selection Rationale & Technical Advantage |
 | :--- | :--- | :--- | :--- |
-| **ML Algorithm** | **LightGBM Regressor** | XGBoost / Random Forest | $5\times$ faster training speed, lower memory footprint, and native support for continuous tabular splits. |
-| **Feature Store** | **Hopsworks (v2)** | Feast / AWS Feature Store | Managed open-source feature store with strict offline/online feature parity and pythonic SDK bindings. |
-| **Web Backend** | **FastAPI (Python 3.11)** | Flask / Django | Asynchronous `asyncio` execution, native Pydantic validation, automatic OpenAPI doc generation, and low overhead. |
-| **UI Framework** | **React 19 & Vite** | Next.js / Vue.js | Lightning-fast HMR build cycles, fine-grained state management, and zero server-side rendering overhead for SPAs. |
-| **Data Viz** | **Recharts (v2.15)** | Chart.js / D3.js | Declarative React SVG integration, high render performance, and seamless styling with CSS variables. |
+| **ML Algorithm** | **LightGBM Regressor** | XGBoost / Random Forest | Faster training speed, lower memory footprint, and native support for continuous tabular splits. |
+| **Feature Store** | **Hopsworks (v2)** | Feast / AWS Feature Store | Open-source feature store with offline/online feature parity and pythonic SDK bindings. |
+| **Web Backend** | **FastAPI (Python 3.11)** | Flask / Django | Asynchronous `asyncio` execution, native Pydantic validation, and low overhead. |
+| **UI Framework** | **React 19 & Vite** | Next.js / Vue.js | Fast build cycles, fine-grained state management, and zero server-side rendering overhead for SPAs. |
+| **Data Viz** | **Recharts** | Chart.js / D3.js | Declarative React SVG integration, high render performance, and seamless styling. |
 
 ---
 
 ## 5. Feature Engineering & Feature Store Pipeline
 
-### 5.1 Hopsworks Feature Store Schema Definition
-The feature group `aqi_hourly_features` (v2) maintains 34 calculated feature fields:
+### 5.1 Hopsworks Feature Store Integration
+The feature group `aqi_hourly_features` (v2) maintains engineered feature fields synchronized with Hopsworks Cloud Feature Store.
 
-`[Database/ER Diagram Placeholder]`  
-*Caption: Figure 5.1 — Hopsworks Feature Group Relational Schema and Feature Transformation Matrix.*
+![Hopsworks Feature Store View](Project_Screenshots/Hopsworks%20Feature%20View%20.png)  
+*Figure 5.1 — Hopsworks Cloud Feature Store Console displaying feature group schema and online feature views.*
 
 | Feature Column Name | Data Type | Engineering Calculation / Transformation Logic |
 | :--- | :--- | :--- |
@@ -206,36 +205,20 @@ df_train['target_72h'] = df_train['pm2_5'].shift(-72)
 
 ---
 
-### 6.2 LightGBM Hyperparameter Configuration
+### 6.2 Model Promotion Gate & Hopsworks Registry
+Before promoting any candidate model bundle to production (`aqi_best_model/model.pkl`), the training pipeline evaluates candidate RMSE against the active production model in Hopsworks Model Registry:
 
-```json
-{
-  "boosting_type": "gbdt",
-  "objective": "regression",
-  "metric": "rmse",
-  "n_estimators": 300,
-  "learning_rate": 0.035,
-  "num_leaves": 31,
-  "max_depth": 6,
-  "subsample": 0.8,
-  "colsample_bytree": 0.8,
-  "random_state": 42
-}
-```
+$$\text{Persistence Lift (\%)} = \left( 1 - \frac{\text{RMSE}_{\text{Candidate}}}{\text{RMSE}_{\text{Persistence}}} \right) \times 100$$
+
+If candidate RMSE improves upon the baseline, the model is registered into the Hopsworks Model Registry and promoted to active status.
+
+![Hopsworks Model Registry](Project_Screenshots/Hopsworks%20Model%20Registry%20.png)  
+*Figure 6.1 — Hopsworks Model Registry Console displaying registered champion model artifacts.*
 
 ---
 
-### 6.3 Persistence Benchmark & Auto-Promotion Gating
-Before saving any model bundle to `aqi_best_model/model.pkl`, the pipeline computes the **Persistence Lift Percentage**:
-
-$$\text{Persistence Lift (\%)} = \left( 1 - \frac{\text{RMSE}_{\text{LightGBM}}}{\text{RMSE}_{\text{Persistence}}} \right) \times 100$$
-
-If $\text{Persistence Lift} \ge 15.0\%$ across all horizons, the model bundle is assigned **Champion Status** (`v36`) and registered in Hopsworks.
-
----
-
-### 6.4 Model Interpretability via SHAP (SHapley Additive exPlanations)
-To prevent black-box opacity, `src/inference.py` integrates `shap.TreeExplainer`. For any feature vector $x$, the local prediction $\hat{f}(x)$ is decomposed as:
+### 6.3 Model Interpretability via SHAP (SHapley Additive exPlanations)
+To ensure transparency, `src/inference.py` integrates `shap.TreeExplainer`. For any feature vector $x$, the local prediction $\hat{f}(x)$ is decomposed as:
 
 $$\hat{f}(x) = \phi_0 + \sum_{i=1}^{M} \phi_i(x)$$
 
@@ -249,18 +232,18 @@ Where $\phi_0$ is the baseline expected value and $\phi_i(x)$ is the marginal SH
 
 | Method | Endpoint Path | Parameters | Response Payload Description |
 | :--- | :--- | :--- | :--- |
-| **GET** | `/api/telemetry` | `force_reload: bool` | Returns live AQI, atmospheric covariates, 3-direct forecasts, SHAP values, and persistence lift. |
+| **GET** | `/api/telemetry` | `force: bool` | Returns live AQI, atmospheric covariates, 3-direct forecasts, SHAP values, and persistence lift. |
 | **GET** | `/api/eda` | None | Returns historical diurnal heatmaps, weekly medians, and feature correlation matrices. |
-| **GET** | `/api/tournament` | None | Returns model evaluation tournament rankings, MAE/RMSE scores, and champion tags. |
-| **POST**| `/api/subscribe` | Body: `{ email, threshold, frequency }` | Registers subscriber email, updates `subscribers.json`, and dispatches SMTP confirmation. |
-| **GET** | `/api/health` | None | Operational health check returning system timestamp, version, and memory usage. |
+| **GET** | `/api/tournament` | None | Returns model evaluation tournament rankings and champion metrics. |
+| **POST**| `/api/subscribe` | Body: `{ email, threshold, frequency }` | Registers subscriber email and dispatches confirmation email. |
+| **GET** | `/api/health` | None | Operational health check returning system status and timestamp. |
 
 ---
 
-## 8. Frontend Architecture & UI/UX Design System (React 19)
+## 8. Frontend Architecture & UI Layout (React 19)
 
 ### 8.1 Component Hierarchy & State Architecture
-The React application follows a clean modular hierarchy managed by `client/src/App.jsx`:
+The React application follows a modular hierarchy managed by `client/src/App.jsx`:
 
 ```
 App.jsx (Root Container & Async State Machine)
@@ -281,184 +264,144 @@ App.jsx (Root Container & Async State Machine)
 
 ---
 
-## 9. Comprehensive Core Module Deep-Dive
-
-This section documents the 12 core functional modules of PEARLS AQI Predictor. Explicit placeholders are provided for screenshot inclusion.
+## 9. Comprehensive System Component Demonstration
 
 ### 9.1 Executive Command Header & Real-Time Sync Controller
-Displays grid target zone (**Wah Cantt & Taxila Grid**), geographic coordinates ($33.77^\circ\text{N}, 72.75^\circ\text{E}$), active live status, and the **Sync Telemetry** trigger.
+Displays target location details (**Wah Cantt / Taxila Region**), geographical coordinates ($33.77^\circ\text{N}, 72.75^\circ\text{E}$), and real-time synchronization status.
 
-`[Screenshot Placeholder: Executive Command Header & Sync Bar]`  
-*Caption: Figure 9.1 — Executive Command Header featuring target grid metadata and interactive Sync Telemetry controller.*
+![Main Command Center Interface](Project_Screenshots/Main%20Front%20Landing%20.png)  
+*Figure 9.1 — Command Center Header and main dashboard view.*
 
 ---
 
 ### 9.2 Hero Air Quality Arc Gauge & Atmospheric Covariates Grid
-Renders the primary half-arc AQI meter (**172 - UNHEALTHY**), calculated baseline $PM_{2.5}$ ($96.4 \, \mu g/m^3$), EPA health advisory text, and the $2 \times 2$ Atmospheric Covariates Grid (Temperature, Humidity, Pressure, Wind Vector).
+Renders the primary half-arc AQI meter, baseline $PM_{2.5}$ concentration, health advisory text, and ambient weather parameters (Temperature, Humidity, Pressure, Wind Speed & Direction).
 
-`[Screenshot Placeholder: Hero AQI Gauge & Atmospheric Covariates Grid]`  
-*Caption: Figure 9.2 — Hero Air Quality Arc Gauge alongside 2x2 Atmospheric Covariates Grid.*
-
----
-
-### 9.3 Mathematical Persistence Lift Benchmark Banner
-Displays error reduction percentage over naive persistence ($+22.4\%$ Day 1, $+18.1\%$ Day 2, $+15.3\%$ Day 3) and the active Auto-Promotion Gate badge.
-
-`[Screenshot Placeholder: Persistence Lift Benchmark & Auto-Promotion Gate]`  
-*Caption: Figure 9.3 — Mathematical Persistence Lift Benchmark Banner showing error reduction over baseline models.*
+![Atmospheric Features & Hero Gauge](Project_Screenshots/Atmosperic%20Features%20.png)  
+*Figure 9.2 — Hero Air Quality Arc Gauge alongside Atmospheric Features Grid.*
 
 ---
 
-### 9.4 Direct Multi-Horizon AI Forecast Cards (+24h, +48h, +72h)
-Displays predicted AQI scores, severity pills, direct model engine tags, observation timestamps, $PM_{2.5}$ mass concentrations, and horizon-specific health advisories.
+### 9.3 Persistence Lift Benchmark & Multi-Horizon Forecast Cards
+Displays calculated error reduction over naive persistence across lead times ($+24\text{h}$, $+48\text{h}$, $+72\text{h}$), alongside target timestamps, predicted AQI values, and severity indicators.
 
-`[Screenshot Placeholder: Direct Multi-Horizon Forecast Cards]`  
-*Caption: Figure 9.4 — Direct Multi-Horizon AI Forecast Cards for +24h, +48h, and +72h horizons.*
-
----
-
-### 9.5 3-Day Continuous Forecast Trajectory & EPA Reference Bands Chart
-Interactive Recharts Area Chart displaying historical observations transitioning smoothly into the 72-hour forecast spline, with color-coded EPA severity reference bands.
-
-`[Screenshot Placeholder: 3-Day Forecast Trajectory & EPA Severity Bands]`  
-*Caption: Figure 9.5 — Recharts 3-day forecast trajectory spline with color-coded EPA severity threshold reference bands.*
+![Persistence Lift & Forecast Cards](Project_Screenshots/Lift%20and%203%20Day%20Frecast%20Cards.png)  
+*Figure 9.3 — Persistence Lift Benchmark Card and Multi-Horizon Forecast Cards.*
 
 ---
 
-### 9.6 Exploratory Data Analysis & Diurnal Trend Profiler
-Displays hourly $PM_{2.5}$ diurnal heatmaps, weekly trend comparison splines, and atmospheric feature correlation factors.
+### 9.4 3-Day Continuous Forecast Trajectory & EPA Reference Bands Chart
+Interactive Recharts Area Chart displaying historical observations transitioning smoothly into the 72-hour forecast spline, overlaid with EPA severity reference bands.
 
-`[Screenshot Placeholder: Exploratory Data Analysis & Diurnal Heatmap]`  
-*Caption: Figure 9.6 — Exploratory Data Analysis module rendering diurnal hourly pollution heatmaps.*
-
----
-
-### 9.7 SHAP Global Waterfall & Local Feature Attribution Engine
-Exposes game-theoretic feature importance via a Global SHAP Waterfall chart and a Local Point-in-Time Attribution table.
-
-`[Screenshot Placeholder: Global SHAP Waterfall & Local Feature Attribution]`  
-*Caption: Figure 9.7 — SHAP Explainable AI Waterfall chart and Local Feature Attribution table.*
+![3-Day Forecast Graph](Project_Screenshots/3%20Day%20forecast%20graph%20.png)  
+*Figure 9.4 — 3-Day Forecast Trajectory Chart with EPA threshold bands.*
 
 ---
 
-### 9.8 Multi-Model Tournament Leaderboard & Auto-Promotion Matrix
-Ranks candidate models (LightGBM Direct, XGBoost Direct, Random Forest, ARIMA Baseline, Naive Persistence) across RMSE, MAE, and latency metrics.
+### 9.5 Exploratory Data Analysis & Diurnal Trend Profiler
+Provides historical insights including diurnal hourly $PM_{2.5}$ heatmaps, weekly trend profiles, and feature correlation matrices.
 
-`[Screenshot Placeholder: Multi-Model Tournament Leaderboard]`  
-*Caption: Figure 9.8 — Multi-Model Tournament Leaderboard highlighting Champion LightGBM Direct engine performance.*
+![EDA Diurnal Heatmap](Project_Screenshots/EDA%201%20.png)  
+*Figure 9.5 — EDA Module displaying hourly diurnal pollution heatmaps.*
 
----
-
-### 9.9 Spatial Hotspot Stations Grid & NWP Grid Monitor
-Renders regional spatial monitoring stations (Wah Cantt Heavy Zone, Taxila Bypass Grid, POF Colony Grid, Rawalpindi West) with local estimated AQI.
-
-`[Screenshot Placeholder: Spatial Hotspot Stations & NWP Atmospheric Grid]`  
-*Caption: Figure 9.9 — Spatial Hotspot Stations Grid monitoring local micro-climates.*
+![EDA Correlation & Distribution](Project_Screenshots/EDA%202.png)  
+*Figure 9.6 — Feature correlation matrix and atmospheric distributions.*
 
 ---
 
-### 9.10 Early Warning Hazardous AQI Alert Dispatcher & Email System
-Allows users to configure threshold triggers ($AQI > 100, 150, 200$) and subscribe to automated SMTP email notifications.
+### 9.6 SHAP Global Waterfall & Local Feature Attribution Engine
+Exposes model decisions using a game-theoretic SHAP Waterfall chart and point-in-time feature attribution tables.
 
-`[Screenshot Placeholder: Early Warning Alert Dispatcher & Email Subscription]`  
-*Caption: Figure 9.10 — Early Warning Hazardous AQI Alert Dispatcher user interface.*
-
----
-
-### 9.11 MLOps Telemetry & System Stream Status Bar
-Displays pipeline data completeness (`Data: 100.0%`), model residual confidence (`Residual Conf: 83.6%`), Hopsworks sync status, and registered model version (`v36`).
-
-`[Screenshot Placeholder: MLOps Telemetry & System Status Bar]`  
-*Caption: Figure 9.11 — MLOps Telemetry Stream Status Bar showing live pipeline metrics.*
+![SHAP Explainability](Project_Screenshots/Shap%20.png)  
+*Figure 9.7 — SHAP Waterfall Chart and Feature Attribution breakdown.*
 
 ---
 
-### 9.12 Fixed Desktop Sidebar & Mobile Navigation Drawer
-Demonstrates the responsive layout architecture: locked $100\text{vh}$ desktop sidebar vs slide-over mobile drawer.
+### 9.7 Multi-Model Tournament Leaderboard
+Compares candidate models (LightGBM, XGBoost, Random Forest, ARIMA Baseline, Naive Persistence) across RMSE, MAE, and latency metrics to validate champion selection.
 
-`[Screenshot Placeholder: Mobile Navigation Drawer & Fixed Desktop Sidebar]`  
-*Caption: Figure 9.12 — Cross-Device Viewport Comparison demonstrating desktop sidebar and mobile navigation drawer.*
+![Model Tournament Leaderboard](Project_Screenshots/Model%20tournament%20.png)  
+*Figure 9.8 — Multi-Model Tournament Leaderboard UI.*
 
 ---
 
-## 10. Development Challenges & Incident Post-Mortems
+### 9.8 Early Warning Hazardous AQI Alert Dispatcher & Email System
+Allows users to register email addresses for automated SMTP notifications when predicted AQI exceeds configured thresholds.
 
-### 10.1 Incident 1: Multi-Step Recursive Forecast Divergence
-* **Root Cause:** Appending predicted values back into feature vectors caused exponential error compounding over 48–72 hours.
-* **Mitigation:** Implemented a **3-Direct Model Architecture**, training separate models directly on shifted horizon targets, improving 72h RMSE by $34.2\%$.
+![Email Subscription Form](Project_Screenshots/Email%20Subscribe%20.png)  
+*Figure 9.9 — Early Warning Email Alert Subscription Form.*
 
-### 10.2 Incident 2: Hopsworks Feature Store Connection Latency & Timeouts
-* **Root Cause:** Synchronous TLS handshakes to remote Hopsworks cluster nodes blocked the FastAPI event loop during network latency spikes.
-* **Mitigation:** Wrapped Hopsworks calls in a `ThreadPoolExecutor` with a $3.0\text{s}$ timeout guard and implemented automatic fallback to local warm parquet snapshots (`data/features.parquet`).
+![Subscription Confirmation Received](Project_Screenshots/Email%20ecevied%20subsciption.png)  
+*Figure 9.10 — Email Subscription Welcome Notification Received.*
 
-### 10.3 Incident 3: Production Vercel-Railway CORS & Origin Mismatches
-* **Root Cause:** FastAPI `CORSMiddleware` restricted origins to local developer URIs, causing cross-domain fetch blocks when deployed to Vercel.
-* **Mitigation:** Updated `CORSMiddleware` to allow wildcard origins (`allow_origins=["*"]`) and added a resilient endpoint fallback array in `App.jsx`.
+![Health Precautions Email](Project_Screenshots/Email%20Precautions%20Given%20.png)  
+*Figure 9.11 — Automated Health Advisory Email Content.*
 
-### 10.4 Incident 4: Visual Feedback Sync Banner Premature Collapsing
-* **Root Cause:** Loading timers closed the progress banner before the backend response settled into React telemetry state.
-* **Mitigation:** Re-engineered the async controller state machine to hold the $100\%$ green success banner visible on screen for **2.5 seconds** after data state settlement.
+![Early Warning Alert Email](Project_Screenshots/Email%20Alert%20.png)  
+*Figure 9.12 — Automated High-AQI Hazard Warning Email Dispatch.*
+
+---
+
+## 10. Engineering Challenges & Incident Post-Mortems
+
+### 10.1 Multi-Step Recursive Forecast Divergence
+* **Issue:** Appending predicted values back into feature vectors caused error compounding over 48–72 hours.
+* **Mitigation:** Implemented a **3-Direct Model Architecture**, training separate models directly on shifted horizon targets ($y_{t+24}, y_{t+48}, y_{t+72}$), eliminating recursive error propagation.
+
+### 10.2 Hopsworks Connection Timeouts & Session Cleanups
+* **Issue:** Repeated re-authentication calls during API requests caused network timeouts and SSL certificate cleanup errors (`keyStore.jks` missing).
+* **Mitigation:** Implemented a **Singleton Hopsworks Connection Manager** (`_HOPSWORKS_PROJECT_CACHE`) to maintain a single authenticated session, combined with a local parquet cache fallback (`data/features.parquet`).
+
+### 10.3 Cross-Origin Resource Sharing (CORS) Policy Mismatches
+* **Issue:** Combining wildcard origins (`allow_origins=["*"]`) with `allow_credentials=True` in FastAPI caused browser preflight (OPTIONS) request failures on Vercel deployment.
+* **Mitigation:** Updated `CORSMiddleware` configuration to `allow_credentials=False` for wildcard origins, enabling clean browser cross-origin requests.
+
+### 10.4 Container Cold Start & Missing Local Artifacts
+* **Issue:** Fresh cloud container deployments on Railway lacked cached model files, causing `FileNotFoundError`.
+* **Mitigation:** Updated `load_champion_model_bundle()` to automatically download the active champion model from Hopsworks Model Registry upon container startup if missing locally.
 
 ---
 
 ## 11. System Verification & Quality Assurance Audit
 
-### 11.1 Quantitative Model Benchmark Evaluation
+### 11.1 System Test Suite Evaluation
+Automated test suites were executed using `pytest` to validate core components:
+* `test_config.py` — Configuration parameter validation.
+* `test_feature_pipeline.py` — Covariate transformation & windowing validation.
+* `test_train_model.py` — Dataset splitting & model target alignment validation.
+* `test_inference.py` — Prediction pipeline & SHAP contribution output validation.
+* `test_api.py` — FastAPI endpoint status and response schema validation.
 
-| Horizon | LightGBM RMSE | Naive Persistence RMSE | LightGBM MAE | Persistence Lift (%) | Gate Status |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Day 1 (+24h)** | **12.40** | 15.98 | **9.12** | **+22.40%** | **PASSED (Gate Active)** |
-| **Day 2 (+48h)** | **15.80** | 19.29 | **11.45** | **+18.09%** | **PASSED (Gate Active)** |
-| **Day 3 (+72h)** | **19.20** | 22.67 | **14.10** | **+15.31%** | **PASSED (Gate Active)** |
-
----
-
-### 11.2 Production API Response Latency Audit
-
-| Endpoint Path | Cache State | Average Latency | Status Code | Payload Size |
-| :--- | :--- | :--- | :--- | :--- |
-| `/api/telemetry` | Cache Hit (TTL < 120s) | **8.2 ms** | 200 OK | ~14.2 KB |
-| `/api/telemetry` | Cache Miss (Cold Compute)| **845.0 ms** | 200 OK | ~14.2 KB |
-| `/api/eda` | Local Read | **12.1 ms** | 200 OK | ~28.5 KB |
-| `/api/tournament` | Local Read | **6.4 ms** | 200 OK | ~4.1 KB |
-| `/api/subscribe` | File I/O + SMTP | **312.0 ms** | 200 OK | ~0.8 KB |
+All automated tests passed successfully, confirming system stability.
 
 ---
 
-## 12. Deployment Topology & Infrastructure Setup
+## 12. Deployment Topology & CI/CD Pipelines
 
-```
-                                  +-----------------------+
-                                  |   GitHub Repository   |
-                                  |  (main branch push)   |
-                                  +-----------+-----------+
-                                              |
-                       +----------------------+----------------------+
-                       |                                             |
-                       v                                             v
-        +------------------------------+             +------------------------------+
-        |   Vercel Edge Deployment     |             |   Railway Container Cloud    |
-        |   - React 19 Frontend SPA    |             |   - FastAPI Backend Server   |
-        |   - Production CDN Assets    |             |   - Python 3.11 Environment  |
-        |   - https://...vercel.app    |             |   - https://...railway.app   |
-        +------------------------------+             +------------------------------+
-```
+### 12.1 Deployment Infrastructure Architecture
+The platform is deployed across decoupled cloud services:
+* **Frontend:** Hosted on Vercel Edge Network (React 19 single-page application).
+* **Backend:** Hosted on Railway Container Cloud (FastAPI REST service).
+* **Feature Store & Registry:** Hosted on Hopsworks Cloud (Feature Store v2 & Model Registry).
+
+![GitHub Actions CI/CD Pipeline](Project_Screenshots/Github%20Actions%20Running%20pipelines%20.png)  
+*Figure 12.1 — GitHub Actions Automated Ingestion and Training Pipelines.*
 
 ---
 
-## 13. Conclusion & Engineering Roadmap
+## 13. Conclusion & Future Work
 
 ### 13.1 Operational Conclusion
-The **PEARLS AQI Predictor** platform represents a fully functional, production-ready MLOps solution for atmospheric forecasting in Wah Cantt & Taxila. By implementing a 3-Direct LightGBM model architecture, Hopsworks feature store integration, FastAPI caching, and a responsive React 19 dashboard, the platform provides verifiable error reduction over baseline models.
+The **PEARLS AQI Predictor** platform provides a functional MLOps solution for atmospheric air quality forecasting in the Wah Cantt & Taxila region. By leveraging a 3-Direct LightGBM model strategy, Hopsworks cloud feature store synchronization, FastAPI serving layer, and React 19 dashboard, the system provides transparent, multi-horizon air quality intelligence.
 
-### 13.2 Phase 2 Future Roadmap
-1. **Deep Learning Temporal Architectures:** Evaluating Temporal Fusion Transformers (TFT) and Bi-LSTM networks for seasonal trend capture.
-2. **GIS Interactive Particle Map:** Integrating Mapbox GL layers for dynamic spatial $PM_{2.5}$ concentration maps across Pakistan.
-3. **Multi-Channel Dispatcher Expansion:** Integrating SMS notifications (Twilio API) and WhatsApp Webhook alerts for immediate critical hazard warnings.
+### 13.2 Future Enhancements
+1. **Deep Learning Exploration:** Evaluating Temporal Fusion Transformers (TFT) for capturing longer-term seasonal dynamics.
+2. **Interactive Map Integration:** Adding Mapbox GL layers for dynamic spatial $PM_{2.5}$ heatmaps.
+3. **Multi-Channel Alerts:** Extending automated notifications to SMS (Twilio API) and messaging webhooks.
 
 ---
 
-**Report Certification & Sign-Off:**  
+**Report Certification:**  
 **Mohsin Ali**  
-*Lead MLOps & Software Engineer*  
-CAX-OL-2026-267 | September 2026
+*Software Engineer*  
+September 2026
