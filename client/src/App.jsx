@@ -61,12 +61,18 @@ export default function App() {
     return cleanBase ? `${cleanBase}${path}` : path;
   };
 
-  const fetchTelemetryData = async (showSyncAnim = false, isBackground = false) => {
-    if (showSyncAnim) {
+  const fetchTelemetryData = async (showSyncAnim = true, isBackground = false) => {
+    if (!isBackground) {
       setIsSyncing(true);
-      setSyncProgress(15);
-    } else if (!isBackground) {
       setIsLoading(true);
+      setSyncProgress(15);
+    }
+
+    let interval;
+    if (!isBackground) {
+      interval = setInterval(() => {
+        setSyncProgress((prev) => (prev < 85 ? prev + 15 : prev));
+      }, 300);
     }
 
     const endpoints = [
@@ -75,14 +81,6 @@ export default function App() {
       '/api/telemetry'
     ];
     let success = false;
-    
-    // Smooth progress animation if syncing
-    let interval;
-    if (showSyncAnim) {
-      interval = setInterval(() => {
-        setSyncProgress((prev) => (prev < 90 ? prev + 25 : prev));
-      }, 200);
-    }
 
     for (const endpoint of endpoints) {
       try {
@@ -96,23 +94,20 @@ export default function App() {
       } catch (error) {}
     }
 
-    if (!success) {
-      console.warn("Telemetry API offline or starting up.");
+    if (!isBackground) {
+      if (interval) clearInterval(interval);
+      setSyncProgress(100);
+      
+      // Ensure banner remains visible for 1.5s until user confirms data is on screen
+      setTimeout(() => {
+        setIsLoading(false);
+        setIsSyncing(false);
+        setTimeout(() => setSyncProgress(0), 400);
+      }, 1500);
     }
 
-    if (showSyncAnim) {
-      setSyncProgress(100);
-      setTimeout(() => {
-        setIsLoading(false);
-        setIsSyncing(false);
-        setSyncProgress(0);
-        if (interval) clearInterval(interval);
-      }, 700);
-    } else if (!isBackground) {
-      setTimeout(() => {
-        setIsLoading(false);
-        setIsSyncing(false);
-      }, 350);
+    if (!success) {
+      console.warn("Telemetry API offline or starting up.");
     }
   };
 
