@@ -754,7 +754,7 @@ export default function App() {
                 <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0F172A', margin: '0 0 1rem 0', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                   <Layers size={20} color="#0D9488" /> Direct Multi-Horizon AI Forecasts (+24h, +48h, +72h)
                 </h3>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '1.25rem' }}>
+                <div className="grid-3col-responsive">
                   {isLoading || !telemetry.forecasts || telemetry.forecasts.length === 0 ? (
                     [{ horizon: '24H' }, { horizon: '48H' }, { horizon: '72H' }].map((fc, idx) => (
                       <ForecastCard key={idx} forecast={fc} isLoading={true} />

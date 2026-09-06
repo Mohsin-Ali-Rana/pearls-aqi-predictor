@@ -74,7 +74,7 @@ export default function HeroAQIGauge({ telemetry, isLoading }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
       
       {/* SECTION 1: Top Hero Grid (Gauge Left + 2x2 Weather Grid Right) */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '1.25rem', alignItems: 'stretch' }}>
+      <div className="grid-2col-responsive" style={{ alignItems: 'stretch' }}>
         
         {/* Left Card: Air Quality Index Arc Gauge */}
         <div style={{
@@ -334,7 +334,7 @@ export default function HeroAQIGauge({ telemetry, isLoading }) {
           </div>
 
           {/* 2x2 Grid of Spacious Weather Cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem', flex: 1 }}>
+          <div className="weather-grid-responsive" style={{ flex: 1 }}>
             
             {/* TEMPERATURE */}
             <div style={{ backgroundColor: '#F8FAFC', padding: '1rem', borderRadius: '0.85rem', border: '1px solid #F1F5F9', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
@@ -439,7 +439,7 @@ export default function HeroAQIGauge({ telemetry, isLoading }) {
         </div>
 
         {/* 3 Horizon Stat Cards Grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
+        <div className="grid-3col-responsive">
           
           {/* Day 1 (+24h) - Emerald Teal */}
           <div style={{ backgroundColor: '#F8FAFC', padding: '1rem 1.15rem', borderRadius: '0.85rem', border: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
