@@ -5,9 +5,9 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100%2B-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![React 19 + Vite](https://img.shields.io/badge/Frontend-React%2019%20%2B%20Vite-61DAFB.svg?logo=react&logoColor=white)](https://reactjs.org/)
 
-**PEARLS AQI Predictor** is a multi-horizon atmospheric forecasting and MLOps platform engineered to predict Fine Particulate Matter ($\text{PM}_{2.5}$) and European Air Quality Index (AQI) levels across 24-hour (+24h), 48-hour (+48h), and 72-hour (+72h) lead times for the **Wah Cantt & Taxila Industrial Corridor**.
+**PEARLS AQI Predictor** is a multi-horizon atmospheric forecasting and MLOps platform engineered to predict Fine Particulate Matter ($\text{PM}_{2.5}$) and European Air Quality Index (AQI) levels across 24-hour (+24h), 48-hour (+48h), and 72-hour (+72h) lead times for the **Wah Cantt & Taxila Industrial Corridor** (33.77°N, 72.75°E).
 
-The platform ingests hourly numerical weather prediction telemetry from Open-Meteo, synchronizes engineered feature sets to the Hopsworks Feature Store, executes 3-Direct LightGBM multi-horizon model evaluation, and serves real-time predictions with SHAP feature explainability through a FastAPI backend and React 19 command dashboard.
+The platform ingests hourly numerical weather prediction telemetry from Open-Meteo, synchronizes engineered feature sets to the Hopsworks Cloud Feature Store, executes 3-Direct LightGBM multi-horizon model evaluation, and serves real-time predictions with SHAP feature explainability through a FastAPI backend and React 19 command dashboard.
 
 ---
 
@@ -19,16 +19,55 @@ The platform ingests hourly numerical weather prediction telemetry from Open-Met
 
 ---
 
-## 🏛️ System Architecture
+## 🔑 Key Features & System Capabilities
 
-The multi-tier architecture connects data ingestion, cloud feature store synchronization, direct multi-horizon model inference, model registration, and interactive React client presentation.
+### 1. 🎯 Direct Multi-Horizon AI Engine (+24h, +48h, +72h)
+- **Zero Error Compounding**: Implements three independent, dedicated LightGBM regressor models targeting predictions exactly 24 hours, 48 hours, and 72 hours into the future.
+- **Direct Target Alignment**: Eliminates the exponential error compounding and model drift inherent in traditional recursive multi-step forecasting frameworks.
+
+### 2. ☁️ Hopsworks Cloud Feature Store Synchronization (v2)
+- **Continuous Feature Ingestion**: Hourly ingestion of raw meteorological and criteria pollutant telemetry from Open-Meteo NWP feeds.
+- **34 Engineered Atmospheric Covariates**: Automatic calculation of temporal lags (t-1 to t-24), rolling statistics (6h, 12h, 24h moving averages), wind vectors, relative humidity interaction terms, and thermal boundary layer inversion proxies.
+- **Offline/Online Parity**: Guarantees identical feature transformations during model training and real-time online inference.
+
+### 3. 🔍 Explainable AI (XAI) with SHAP TreeExplainer
+- **Global Feature Importance**: Computes game-theoretic SHAP Waterfall rankings to highlight primary atmospheric drivers influencing regional air quality.
+- **Local Point-in-Time Attribution**: Provides precise, feature-level contribution metrics ($\mu\text{g/m}^3$) for every forecast horizon (+24h, +48h, +72h).
+
+### 4. 📈 Persistence Lift Benchmark & Auto-Promotion Gating
+- **Empirical Baseline Validation**: Evaluates candidate model performance against a compulsory Naive Persistence Baseline ($y_{t+H} = y_t$).
+- **Automated Model Registry Gating**: Evaluates Root Mean Squared Error (RMSE) reduction percentages; automatically promotes and registers new champion model artifacts to the Hopsworks Model Registry only when candidate lift metrics exceed active production models.
+
+### 5. 📊 Exploratory Data Analysis (EDA) & Diurnal Profiler
+- **Diurnal Pollution Heatmaps**: Visualizes hourly particulate intensity profiles across day-of-week and time-of-day dimensions.
+- **Atmospheric Correlation Matrices**: Computes feature correlation heatmaps mapping relationships between temperature, humidity, pressure, wind speed, and $\text{PM}_{2.5}$ concentrations.
+
+### 6. 🏆 Multi-Model Tournament Leaderboard
+- **Comparative Estimator Benchmarking**: Runs automated model tournaments comparing LightGBM, XGBoost, Random Forest, ARIMA, and Naive Persistence models across RMSE, MAE, and inference latency dimensions.
+
+### 7. ✉️ Automated Early Warning Email Alert Dispatcher
+- **Custom Alert Thresholds**: Allows citizens and administrators to configure custom AQI alert triggers (AQI > 100, 150, 200) and dispatch frequencies (e.g., 6-hour intervals).
+- **Automated SMTP Mailer**: Dispatches automated subscription welcome confirmations, health precautions, and high-hazard emergency alert emails when atmospheric conditions degrade.
+
+### 8. 🛡️ High-Availability FastAPI Backend & Resilient Caching
+- **Sub-Second Caching**: In-memory response caching (`_TELEMETRY_CACHE`) minimizes redundant computation and network roundtrips.
+- **Dual-Tier Fallback Strategy**: Gracefully falls back to local warm parquet feature snapshots (`data/features.parquet`) if Hopsworks API latency or network timeouts occur.
+- **Production CORS Whitelist**: Configured with explicit origin whitelisting (`allow_credentials=True`) and catch-all exception handlers to ensure CORS preservation.
+
+### 9. ⚙️ Automated CI/CD Pipelines (GitHub Actions)
+- **Automated Ingestion**: Scheduled hourly workflows ingest fresh weather data and push updated feature vectors to Hopsworks.
+- **Automated Retraining**: Scheduled daily workflows re-evaluate model performance, execute hyperparameter tuning, and trigger model registry updates.
+
+---
+
+## 🏛️ System Architecture
 
 ```
 +-----------------------------------------------------------------------------------+
 |                         1. DATA INGESTION & FEATURE STORE LAYER                   |
 |  +-------------------------------+         +-----------------------------------+  |
 |  | Open-Meteo NWP Grid Feed      |         | Hopsworks Online Feature Store v2 |  |
-|  | (Raw Weather & Chemical Feed) |         | (aqi_hourly_features Group v2)    |  |
+|  | (Raw Weather & Chemical Feed) |         | (aqi_hourly_features Group v1/v2) |  |
 |  +---------------+---------------+         +-----------------+-----------------+  |
 |                  |                                           |                    |
 |                  +--------------------+----------------------+                    |
@@ -65,7 +104,7 @@ The multi-tier architecture connects data ingestion, cloud feature store synchro
 
 ---
 
-## 📸 Core Component Features
+## 📸 Core Component Previews
 
 | Feature Component | Interface Preview | Description |
 | :--- | :---: | :--- |
@@ -147,7 +186,7 @@ npm run dev
 
 ## 📡 Deployment URLs
 
-- **Live Frontend (Vercel):** [https://pearls-aqi-predictor.vercel.app](https://pearls-aqi-predictor.vercel.app)
+- **Live Frontend (Vercel):** [https://pearls-aqi-predictor-psi.vercel.app](https://pearls-aqi-predictor-psi.vercel.app)
 - **Live API Backend (Railway):** [https://pearls-aqi-predictor-production.up.railway.app](https://pearls-aqi-predictor-production.up.railway.app)
 
 ---
