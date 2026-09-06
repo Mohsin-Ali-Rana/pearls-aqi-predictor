@@ -32,24 +32,30 @@ app = FastAPI(
     description="MLOps Backend serving dynamic LightGBM multi-horizon air quality predictions."
 )
 
-origins = [
-    "https://pearls-aqi-predictor-psi.vercel.app",
-    "https://pearls-aqi-predictor.vercel.app",
-    "http://localhost:3000",
-    "http://localhost:5173",
-    "http://127.0.0.1:3000",
-    "http://127.0.0.1:5173",
-]
+@app.middleware("http")
+async def add_cors_headers(request: Request, call_next):
+    origin = request.headers.get("origin", "*")
+    if request.method == "OPTIONS":
+        response = Response(status_code=200)
+        response.headers["Access-Control-Allow-Origin"] = origin if origin else "*"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS, PUT, DELETE, PATCH"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        return response
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_origin_regex=r"https://.*\.vercel\.app",
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["*"],
-)
+    try:
+        response = await call_next(request)
+    except Exception as exc:
+        response = JSONResponse(
+            status_code=500,
+            content={"detail": "Internal Server Error", "error": str(exc)}
+        )
+
+    response.headers["Access-Control-Allow-Origin"] = origin if origin else "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS, PUT, DELETE, PATCH"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+    return response
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
