@@ -23,3 +23,5 @@ Thumbs.db
 tmp_*
 *.docx
 *.doc
+!Project_Report/
+!Project_Report/*
