@@ -906,52 +906,8 @@ export default function App() {
               transition={{ duration: 0.25 }}
               style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}
             >
-              {/* Full Pearson Feature Correlation Suite */}
+              {/* Full Pearson Feature Correlation Suite & 24-Hour Diurnal Profile */}
               <CorrelationHeatmap />
-
-              {/* Diurnal Hourly Profile Spline */}
-              {edaData && edaData.hourly_diurnal_profile && (
-                <div style={{ backgroundColor: '#FFFFFF', borderRadius: '1.25rem', padding: '1.6rem', border: '1px solid #E2E8F0', boxShadow: '0 4px 20px -2px rgba(15,23,42,0.04)' }}>
-                  <div style={{ marginBottom: '1.2rem' }}>
-                    <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '800', color: '#0F172A' }}>
-                      🕒 24-Hour Daily Pollution Profile (PM2.5 & European AQI)
-                    </h3>
-                    <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.78rem', color: '#64748B' }}>
-                      24-hour mean atmospheric concentration pattern extracted from historical observation window
-                    </p>
-                  </div>
-                  <div style={{ height: '260px', width: '100%' }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={
-                        Array.isArray(edaData.hourly_diurnal_profile)
-                          ? edaData.hourly_diurnal_profile
-                          : Object.entries(edaData.hourly_diurnal_profile.pm2_5 || {}).map(([hr, val]) => ({
-                              hour: `${hr}:00`,
-                              pm25: val,
-                              aqi: edaData.hourly_diurnal_profile.european_aqi ? edaData.hourly_diurnal_profile.european_aqi[hr] : val
-                            }))
-                      }>
-                        <defs>
-                          <linearGradient id="diurnalGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#0284C7" stopOpacity={0.35}/>
-                            <stop offset="95%" stopColor="#0284C7" stopOpacity={0}/>
-                          </linearGradient>
-                          <linearGradient id="aqiDiurnalGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#0D9488" stopOpacity={0.25}/>
-                            <stop offset="95%" stopColor="#0D9488" stopOpacity={0}/>
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
-                        <XAxis dataKey="hour" stroke="#64748B" fontSize={11} tickLine={false} />
-                        <YAxis stroke="#64748B" fontSize={11} tickLine={false} axisLine={false} />
-                        <Tooltip contentStyle={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', borderRadius: '0.75rem', boxShadow: '0 4px 16px rgba(15,23,42,0.08)' }} />
-                        <Area type="monotone" dataKey="pm25" stroke="#0284C7" strokeWidth={3} fill="url(#diurnalGrad)" name="Mean PM2.5 (µg/m³)" dot={{ r: 3, fill: '#0284C7' }} activeDot={{ r: 6 }} />
-                        <Area type="monotone" dataKey="aqi" stroke="#0D9488" strokeWidth={2} fill="url(#aqiDiurnalGrad)" name="European AQI" strokeDasharray="4 4" dot={false} />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-              )}
             </motion.div>
           )}
 
