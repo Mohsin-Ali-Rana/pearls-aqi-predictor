@@ -25,3 +25,8 @@ tmp_*
 *.doc
 !Project_Report/
 !Project_Report/*
+
+# Model Artifacts & Local Caches (Downloaded dynamically from Hopsworks Model Registry)
+aqi_best_model/
+*.pkl
+*.joblib

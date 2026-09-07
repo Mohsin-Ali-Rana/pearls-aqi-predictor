@@ -94,7 +94,10 @@ def load_champion_model_bundle(force_model_reload: bool = False):
         if not os.path.exists(local_model_path) or remote_version > local_version:
             print(f"Downloading active champion model v{remote_version} from Hopsworks Model Registry...")
             try:
-                remote_model.download("aqi_best_model")
+                downloaded_dir = remote_model.download("aqi_best_model")
+                import shutil
+                if downloaded_dir and os.path.exists(os.path.join(downloaded_dir, "model.pkl")) and os.path.abspath(os.path.join(downloaded_dir, "model.pkl")) != os.path.abspath(local_model_path):
+                    shutil.copy(os.path.join(downloaded_dir, "model.pkl"), local_model_path)
                 local_version = remote_version
             except Exception as dl_err:
                 print(f"Model download note ({dl_err}). Using existing local artifact.")
