@@ -74,7 +74,7 @@ def load_champion_model_bundle(force_model_reload: bool = False):
     remote_model = None
     try:
         future = executor.submit(_fetch_latest_from_registry)
-        remote_model = future.result(timeout=12.0)
+        remote_model = future.result(timeout=45.0)
     except Exception as err:
         print(f"Hopsworks Model Registry lookup note ({err}).")
     finally:
@@ -106,7 +106,7 @@ def load_champion_model_bundle(force_model_reload: bool = False):
         raise FileNotFoundError("Champion model artifact missing at 'aqi_best_model/model.pkl' and could not be fetched from Hopsworks Model Registry.")
 
     model_bundle = joblib.load(local_model_path)
-    loaded_version = int(model_bundle.get("version", local_version))
+    loaded_version = remote_version if remote_model is not None else int(model_bundle.get("version", local_version))
     loaded_name = str(model_bundle.get("name", "aqi_pm25_predictor"))
 
     registry_verified = (remote_model is not None and loaded_version == int(remote_model.version))
@@ -117,6 +117,7 @@ def load_champion_model_bundle(force_model_reload: bool = False):
         training_metrics=model_bundle.get("training_metrics", {}),
         registry_verified=bool(registry_verified)
     )
+    model_bundle["version"] = loaded_version
     model_bundle["registry_verified"] = registry_verified
     _MODEL_BUNDLE_CACHE["bundle"] = model_bundle
     _MODEL_BUNDLE_CACHE["model_meta"] = model_meta
@@ -145,24 +146,24 @@ def run_inference(force_model_reload: bool = False):
         fs = project.get_feature_store()
         try:
             aqi_fg = fs.get_feature_group("aqi_hourly_features", version=2)
-            return aqi_fg.read(read_options={"use_hive": False})
+            return aqi_fg.read(online=True)
         except Exception:
             try:
-                aqi_fg = fs.get_feature_group("aqi_hourly_features", version=1)
-                return aqi_fg.read()
-            except Exception:
                 aqi_fg = fs.get_feature_group("aqi_hourly_features", version=2)
+                return aqi_fg.read(read_options={"use_hive": False})
+            except Exception:
+                aqi_fg = fs.get_feature_group("aqi_hourly_features", version=1)
                 return aqi_fg.read()
 
     hw_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     try:
         hw_future = hw_executor.submit(_fetch_hopsworks_batch)
-        batch_data = hw_future.result(timeout=15.0)
+        batch_data = hw_future.result(timeout=45.0)
         if batch_data is not None and not batch_data.empty:
             feature_store_connected = True
             print(f"Successfully retrieved factual online feature vector from Hopsworks Feature Store ({len(batch_data)} records).")
     except concurrent.futures.TimeoutError:
-        print("Hopsworks Feature Store query timed out (>15.0s). Serving local feature cache...")
+        print("Hopsworks Feature Store query timed out (>45.0s). Serving local feature cache...")
         feature_store_connected = False
         source = "Local Parquet Feature Cache (features.parquet)"
         mode = "Offline / Local Artifact Mode"
