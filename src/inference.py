@@ -146,13 +146,15 @@ def run_inference(force_model_reload: bool = False):
         fs = project.get_feature_store()
         try:
             aqi_fg = fs.get_feature_group("aqi_hourly_features", version=2)
+            print("Querying online feature store engine (online=True)...")
             return aqi_fg.read(online=True)
-        except Exception:
+        except Exception as e1:
+            print(f"Hopsworks online query note ({e1}). Attempting direct read...")
             try:
                 aqi_fg = fs.get_feature_group("aqi_hourly_features", version=2)
                 return aqi_fg.read(read_options={"use_hive": False})
             except Exception:
-                aqi_fg = fs.get_feature_group("aqi_hourly_features", version=1)
+                aqi_fg = fs.get_feature_group("aqi_hourly_features", version=2)
                 return aqi_fg.read()
 
     hw_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
