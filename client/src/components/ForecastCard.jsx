@@ -20,8 +20,8 @@ export default function ForecastCard({ forecast, isLoading }) {
   const horizon = fc.horizon || '24H';
 
   // Clean Model Name (Requirement 2: No 'Winner' text, clearly visible)
-  let rawModelName = isCardLoading ? 'Direct Engine' : (fc.modelName || 'LightGBM');
-  const cleanModelName = String(rawModelName).replace(/Winner/gi, '').trim() || 'LightGBM';
+  let rawModelName = isCardLoading ? 'Direct Engine' : (fc.modelName || 'Champion Model');
+  const cleanModelName = String(rawModelName).replace(/Winner/gi, '').trim() || 'Champion Model';
 
   const rmseNum = safeNumber(fc.rmse);
   const rmse = !isCardLoading && rmseNum !== null ? `±${rmseNum.toFixed(2)} RMSE` : '-- RMSE';

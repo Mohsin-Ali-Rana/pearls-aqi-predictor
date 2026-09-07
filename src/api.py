@@ -29,7 +29,7 @@ except ImportError:
 # FastAPI application instance setup
 app = FastAPI(
     title="PEARLS AQI Predictor API",
-    description="MLOps Backend serving dynamic LightGBM multi-horizon air quality predictions."
+    description="MLOps Backend serving dynamic multi-model tournament air quality predictions."
 )
 
 app.add_middleware(

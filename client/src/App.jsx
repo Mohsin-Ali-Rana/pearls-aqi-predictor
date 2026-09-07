@@ -705,11 +705,11 @@ export default function App() {
                     <span style={{ fontSize: '0.88rem', fontWeight: '800', color: syncProgress === 100 ? '#059669' : '#0F172A' }}>
                       {syncProgress === 100
                         ? '✓ Live Telemetry & 72-Hour Predictions Synchronized!'
-                        : 'Querying Open-Meteo NWP Atmospheric Grid & Hopsworks Feature Store V2...'}
+                        : 'Querying Hopsworks Online Feature Store V2 & Champion Model Registry...'}
                     </span>
                     <p style={{ margin: '0.15rem 0 0 0', fontSize: '0.75rem', color: syncProgress === 100 ? '#047857' : '#64748B', fontWeight: syncProgress === 100 ? '600' : '400' }}>
                       {syncProgress === 100
-                        ? 'Fresh atmospheric vectors & LightGBM multi-horizon predictions loaded on dashboard'
+                        ? 'Fresh atmospheric vectors & multi-model tournament predictions loaded on dashboard'
                         : 'Re-calibrating direct 72-hour multi-horizon state vectors for Wah Cantt / Taxila grid'}
                     </p>
                   </div>
@@ -1007,7 +1007,7 @@ export default function App() {
                         Multi-Variate Atmospheric Vector & Feature Store Telemetry
                       </h3>
                       <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.78rem', color: '#64748B' }}>
-                        Real-time 8-parameter observation vector stream from Open-Meteo & Hopsworks Feature Store V2
+                        Real-time 8-parameter observation vector stream from Hopsworks Feature Store V2
                       </p>
                     </div>
                   </div>
