@@ -5,8 +5,14 @@ export default function TournamentChart() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  const getApiUrl = (path) => {
+    const envUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || 'https://pearls-aqi-predictor-production.up.railway.app';
+    const cleanBase = envUrl.replace(/\/$/, '');
+    return `${cleanBase}${path}`;
+  };
+
   useEffect(() => {
-    fetch('/api/tournament')
+    fetch(getApiUrl('/api/tournament'))
       .then(res => res.json())
       .then(json => {
         setData(json);
