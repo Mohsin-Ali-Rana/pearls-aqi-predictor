@@ -59,57 +59,58 @@ def load_champion_model_bundle(force_model_reload: bool = False):
         return _MODEL_BUNDLE_CACHE["bundle"], _MODEL_BUNDLE_CACHE["model_meta"]
 
     local_model_path = os.path.join("aqi_best_model", "model.pkl")
-    if not os.path.exists(local_model_path):
-        print("Model artifact missing locally. Downloading active champion model from Hopsworks Model Registry...")
+    
+    # Query Hopsworks Model Registry for the latest promoted champion model (e.g., v35)
+    def _fetch_latest_from_registry():
+        project = get_hopsworks_project()
+        mr = project.get_model_registry()
+        models = mr.get_models("aqi_pm25_predictor")
+        if models:
+            latest_hw_model = max(models, key=lambda m: int(m.version))
+            return latest_hw_model
+        return None
+
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    remote_model = None
+    try:
+        future = executor.submit(_fetch_latest_from_registry)
+        remote_model = future.result(timeout=12.0)
+    except Exception as err:
+        print(f"Hopsworks Model Registry lookup note ({err}).")
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
+
+    # Check if local model needs updating from remote Hopsworks registry
+    local_version = -1
+    if os.path.exists(local_model_path):
         try:
-            project = get_hopsworks_project()
-            mr = project.get_model_registry()
-            models = mr.get_models("aqi_pm25_predictor")
-            if models:
-                latest_hw_model = max(models, key=lambda m: int(m.version))
-                print(f"Downloading Hopsworks Model Registry version v{latest_hw_model.version}...")
-                latest_hw_model.download("aqi_best_model")
-        except Exception as dl_err:
-            print(f"Hopsworks Model Registry download note ({dl_err}).")
+            existing_bundle = joblib.load(local_model_path)
+            local_version = int(existing_bundle.get("version", 34))
+        except Exception:
+            local_version = -1
+
+    if remote_model is not None:
+        remote_version = int(remote_model.version)
+        if not os.path.exists(local_model_path) or remote_version > local_version:
+            print(f"Downloading active champion model v{remote_version} from Hopsworks Model Registry...")
+            try:
+                remote_model.download("aqi_best_model")
+                local_version = remote_version
+            except Exception as dl_err:
+                print(f"Model download note ({dl_err}). Using existing local artifact.")
 
     if not os.path.exists(local_model_path):
         raise FileNotFoundError("Champion model artifact missing at 'aqi_best_model/model.pkl' and could not be fetched from Hopsworks Model Registry.")
 
     model_bundle = joblib.load(local_model_path)
-    local_version = int(model_bundle.get("version", 34))
-    local_name = str(model_bundle.get("name", "aqi_pm25_predictor"))
+    loaded_version = int(model_bundle.get("version", local_version))
+    loaded_name = str(model_bundle.get("name", "aqi_pm25_predictor"))
 
-    registry_verified = False
-    def _verify_remote_registry():
-        project = get_hopsworks_project()
-        mr = project.get_model_registry()
-        models = mr.get_models(local_name)
-        if models:
-            latest_remote_version = max([int(m.version) for m in models])
-            return (local_version == latest_remote_version), latest_remote_version
-        return False, None
-
-    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-    try:
-        future = executor.submit(_verify_remote_registry)
-        is_match, remote_ver = future.result(timeout=10.0)
-        registry_verified = bool(is_match)
-        if registry_verified:
-            print(f"Hopsworks Model Registry Verified: Local v{local_version} matches remote v{remote_ver}.")
-        else:
-            print(f"Registry Version Mismatch: Local v{local_version} vs Remote v{remote_ver}.")
-    except concurrent.futures.TimeoutError:
-        print("Model Registry lookup timed out (>10.0s). Defaulting registry_verified to False.")
-        registry_verified = False
-    except Exception as err:
-        print(f"Model Registry lookup note ({err}). Defaulting registry_verified to False.")
-        registry_verified = False
-    finally:
-        executor.shutdown(wait=False, cancel_futures=True)
+    registry_verified = (remote_model is not None and loaded_version == int(remote_model.version))
 
     model_meta = SimpleNamespace(
-        version=local_version,
-        name=local_name,
+        version=loaded_version,
+        name=loaded_name,
         training_metrics=model_bundle.get("training_metrics", {}),
         registry_verified=bool(registry_verified)
     )
@@ -140,24 +141,25 @@ def run_inference(force_model_reload: bool = False):
         project = get_hopsworks_project()
         fs = project.get_feature_store()
         try:
-            aqi_fg = fs.get_feature_group("aqi_hourly_features", version=1)
-            return aqi_fg.read()
-        except Exception:
             aqi_fg = fs.get_feature_group("aqi_hourly_features", version=2)
+            return aqi_fg.read(read_options={"use_hive": False})
+        except Exception:
             try:
-                return aqi_fg.read(read_options={"use_hive": False})
+                aqi_fg = fs.get_feature_group("aqi_hourly_features", version=1)
+                return aqi_fg.read()
             except Exception:
+                aqi_fg = fs.get_feature_group("aqi_hourly_features", version=2)
                 return aqi_fg.read()
 
     hw_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     try:
         hw_future = hw_executor.submit(_fetch_hopsworks_batch)
-        batch_data = hw_future.result(timeout=4.0)
+        batch_data = hw_future.result(timeout=15.0)
         if batch_data is not None and not batch_data.empty:
             feature_store_connected = True
             print(f"Successfully retrieved factual online feature vector from Hopsworks Feature Store ({len(batch_data)} records).")
     except concurrent.futures.TimeoutError:
-        print("Hopsworks Feature Store query timed out (>4.0s). Serving local feature cache...")
+        print("Hopsworks Feature Store query timed out (>15.0s). Serving local feature cache...")
         feature_store_connected = False
         source = "Local Parquet Feature Cache (features.parquet)"
         mode = "Offline / Local Artifact Mode"
