@@ -11,6 +11,24 @@ def test_api_health_endpoint():
     data = response.json()
     assert data.get("status") == "healthy"
 
+def test_api_cors_allows_vercel_frontend():
+    """Verify browser requests from the production frontend receive CORS headers."""
+    origin = "https://pearls-aqi-predictor-psi.vercel.app"
+    response = client.get("/health", headers={"Origin": origin})
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == origin
+    assert response.headers["access-control-allow-credentials"] == "true"
+
+    preflight = client.options(
+        "/api/telemetry",
+        headers={
+            "Origin": origin,
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    assert preflight.status_code == 200
+    assert preflight.headers["access-control-allow-origin"] == origin
+
 def test_api_telemetry_endpoint():
     """Verify GET /api/telemetry endpoint returns 200 OK with complete AQI payload."""
     import src.api as api_mod

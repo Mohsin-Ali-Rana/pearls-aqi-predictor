@@ -4,7 +4,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import time
 from datetime import datetime
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -32,31 +32,31 @@ app = FastAPI(
     description="MLOps Backend serving dynamic LightGBM multi-horizon air quality predictions."
 )
 
-from starlette.middleware.base import BaseHTTPMiddleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://pearls-aqi-predictor-psi.vercel.app",
+        "https://pearls-aqi-predictor.vercel.app",
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://localhost:8000"
+    ],
+    allow_origin_regex=r"https://.*\.vercel\.app",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-# Custom CORS handler that guarantees the exact origin is always returned
-class DirectCORSMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        origin = request.headers.get("origin")
-        
-        # Handle preflight OPTIONS requests directly
-        if request.method == "OPTIONS":
-            response = Response(status_code=204)
-        else:
-            response = await call_next(request)
-
-        # Reflect the calling origin (or default to your vercel domain)
-        if origin:
-            response.headers["Access-Control-Allow-Origin"] = origin
-        else:
-            response.headers["Access-Control-Allow-Origin"] = "https://pearls-aqi-predictor-psi.vercel.app"
-
-        response.headers["Access-Control-Allow-Credentials"] = "true"
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, HEAD"
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With, Accept, Origin"
-        return response
-
-app.add_middleware(DirectCORSMiddleware)
+@app.on_event("startup")
+def startup_event():
+    try:
+        print("Pre-warming telemetry cache on application startup...")
+        payload = compute_telemetry_response(force_reload=False)
+        _TELEMETRY_CACHE["payload"] = payload
+        _TELEMETRY_CACHE["timestamp"] = time.time()
+        print("Telemetry cache pre-warmed successfully.")
+    except Exception as e:
+        print(f"Startup telemetry pre-warming note: {e}")
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):

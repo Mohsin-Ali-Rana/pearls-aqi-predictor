@@ -136,22 +136,33 @@ def run_inference(force_model_reload: bool = False):
     mode = "Hopsworks Direct Synchronized"
     fallback_used = False
 
-    try:
+    def _fetch_hopsworks_batch():
         project = get_hopsworks_project()
         fs = project.get_feature_store()
         try:
             aqi_fg = fs.get_feature_group("aqi_hourly_features", version=1)
-            batch_data = aqi_fg.read()
+            return aqi_fg.read()
         except Exception:
             aqi_fg = fs.get_feature_group("aqi_hourly_features", version=2)
             try:
-                batch_data = aqi_fg.read(read_options={"use_hive": False})
+                return aqi_fg.read(read_options={"use_hive": False})
             except Exception:
-                batch_data = aqi_fg.read()
+                return aqi_fg.read()
 
+    hw_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    try:
+        hw_future = hw_executor.submit(_fetch_hopsworks_batch)
+        batch_data = hw_future.result(timeout=4.0)
         if batch_data is not None and not batch_data.empty:
             feature_store_connected = True
             print(f"Successfully retrieved factual online feature vector from Hopsworks Feature Store ({len(batch_data)} records).")
+    except concurrent.futures.TimeoutError:
+        print("Hopsworks Feature Store query timed out (>4.0s). Serving local feature cache...")
+        feature_store_connected = False
+        source = "Local Parquet Feature Cache (features.parquet)"
+        mode = "Offline / Local Artifact Mode"
+        fallback_used = True
+        batch_data = None
     except Exception as err:
         print(f"Hopsworks Feature Store query note ({err}). Serving local feature cache...")
         feature_store_connected = False
@@ -159,6 +170,8 @@ def run_inference(force_model_reload: bool = False):
         mode = "Offline / Local Artifact Mode"
         fallback_used = True
         batch_data = None
+    finally:
+        hw_executor.shutdown(wait=False, cancel_futures=True)
 
     if batch_data is None or batch_data.empty:
         if os.path.exists(os.path.join("data", "features.parquet")):
