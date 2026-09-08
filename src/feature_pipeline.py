@@ -156,7 +156,7 @@ def run_feature_pipeline():
                 print(f"Note on append_features: {e}")
 
         print("Persisting feature dataset to Hopsworks Feature Group...")
-        aqi_fg.insert(feature_df, storage="online", wait=True)
+        aqi_fg.insert(feature_df, storage="online_and_offline", wait=True)
         print("Successfully synced features to Hopsworks Feature Store.")
     except Exception as err:
         print(f"Hopsworks sync note ({err}). Local warm cache preserved.")
