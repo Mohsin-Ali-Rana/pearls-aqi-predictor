@@ -13,57 +13,45 @@ except ImportError:
     from src.config import SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_SENDER_NAME, LOCATION_NAME
 
 
-def connect_smtp_server(host: str, port: int, timeout: float = 12.0):
+def connect_smtp_server(host: str, port: int = 465, timeout: float = 4.0):
     """
-    Robust SMTP connection helper for cloud containers (e.g. Railway/Docker).
-    Explicitly resolves IPv4 (AF_INET) addresses to prevent '[Errno 101] Network is unreachable'
-    caused by unrouted IPv6 DNS defaults, with automatic fallback to SSL port 465.
+    Ultra-robust SMTP connection helper designed for cloud environments (Railway, Render, Vercel).
+    Prioritizes SMTPS Port 465 (SSL) over IPv4 to bypass cloud firewall restrictions on port 587,
+    with fast fallback and exception catching.
     """
-    last_err = None
+    errors = []
 
-    # Step 1: Force IPv4 DNS resolution
-    target_ips = []
-    try:
-        addr_info = socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM)
-        target_ips = [item[4][0] for item in addr_info if item[4]]
-    except Exception as dns_err:
-        print(f"[SMTP Connection] IPv4 DNS resolution note for {host}:{port}: {dns_err}")
+    # Prioritize 465 (SSL) as cloud providers block 587/25 by default
+    ports_to_try = [465, 587] if port in (465, 587) else [port, 465, 587]
+    seen = set()
+    ports_to_try = [p for p in ports_to_try if not (p in seen or seen.add(p))]
 
-    targets = target_ips if target_ips else [host]
-
-    # Step 2: Attempt connection over resolved target IPs
-    for target in targets:
+    for target_port in ports_to_try:
+        target_ips = []
         try:
-            if port == 465:
-                server = smtplib.SMTP_SSL(target, port, timeout=timeout)
-            else:
-                server = smtplib.SMTP(target, port, timeout=timeout)
-                server.ehlo()
-                server.starttls()
-                server.ehlo()
-            return server
-        except Exception as err:
-            last_err = err
+            addr_info = socket.getaddrinfo(host, target_port, socket.AF_INET, socket.SOCK_STREAM)
+            target_ips = [item[4][0] for item in addr_info if item[4]]
+        except Exception as dns_err:
+            print(f"[SMTP Connect] IPv4 DNS note for {host}:{target_port}: {dns_err}")
 
-    # Step 3: Dual-stack / port fallback strategy (try SSL port 465 if 587 failed)
-    if port != 465:
-        ssl_targets = []
-        try:
-            addr_info = socket.getaddrinfo(host, 465, socket.AF_INET, socket.SOCK_STREAM)
-            ssl_targets = [item[4][0] for item in addr_info if item[4]]
-        except Exception:
-            ssl_targets = [host]
+        targets = target_ips if target_ips else [host]
 
-        for target in (ssl_targets if ssl_targets else [host]):
+        for target in targets:
             try:
-                server = smtplib.SMTP_SSL(target, 465, timeout=timeout)
+                if target_port == 465:
+                    server = smtplib.SMTP_SSL(target, target_port, timeout=timeout)
+                else:
+                    server = smtplib.SMTP(target, target_port, timeout=timeout)
+                    server.ehlo()
+                    server.starttls()
+                    server.ehlo()
+                print(f"[SMTP Connect] Successfully established connection to {host} on port {target_port}")
                 return server
             except Exception as err:
-                last_err = err
+                print(f"[SMTP Connect] Connection attempt failed on {target}:{target_port} ({err})")
+                errors.append(f"Port {target_port} ({target}): {err}")
 
-    if last_err:
-        raise last_err
-    raise RuntimeError(f"Unable to establish SMTP connection to {host}:{port}")
+    raise RuntimeError(f"All SMTP connection attempts to {host} failed ({'; '.join(errors)})")
 
 # In-memory cooldown tracking (timestamp of last sent alert)
 _LAST_ALERT_TIME = 0.0
@@ -399,11 +387,11 @@ def dispatch_hazardous_aqi_alerts(current_aqi: float, forecast_24h_aqi: float, a
 
 def get_smtp_config():
     host = os.getenv("SMTP_HOST") or SMTP_HOST or "smtp.gmail.com"
-    port_val = os.getenv("SMTP_PORT") or SMTP_PORT or 587
+    port_val = os.getenv("SMTP_PORT") or SMTP_PORT or 465
     try:
         port = int(port_val)
     except (ValueError, TypeError):
-        port = 587
+        port = 465
     user = os.getenv("SMTP_USER") or SMTP_USER or ""
     password = os.getenv("SMTP_PASSWORD") or SMTP_PASSWORD or ""
     sender_name = os.getenv("SMTP_SENDER_NAME") or SMTP_SENDER_NAME or "Pearls AQI Intelligence"
