@@ -15,13 +15,13 @@ try:
     import src.inference as inference_mod
     from src.utils import convert_pm25_to_aqi, get_aqi_status
     from src.config import LOCATION_NAME, STATION_NAME, LOCATION_LATITUDE, LOCATION_LONGITUDE
-    from src.alerts import dispatch_hazardous_aqi_alerts, send_welcome_email
+    from src.alerts import dispatch_hazardous_aqi_alerts, send_welcome_email, send_unsubscribe_email
     from src.feature_pipeline import run_feature_pipeline
 except ImportError:
     import inference as inference_mod
     from utils import convert_pm25_to_aqi, get_aqi_status
     from config import LOCATION_NAME, STATION_NAME, LOCATION_LATITUDE, LOCATION_LONGITUDE
-    from alerts import dispatch_hazardous_aqi_alerts, send_welcome_email
+    from alerts import dispatch_hazardous_aqi_alerts, send_welcome_email, send_unsubscribe_email
     from feature_pipeline import run_feature_pipeline
 
 
@@ -300,6 +300,13 @@ def compute_telemetry_response(force_reload: bool = False) -> TelemetryResponse:
     f_48h = strategic["48h"]
     f_72h = strategic["72h"]
 
+    # Trigger automated hazardous AQI threshold breach alerts to active subscribers
+    try:
+        dispatch_res = dispatch_hazardous_aqi_alerts(current_aqi, float(f_24h["predicted_aqi"]), advisory_title)
+        print(f"[Telemetry Dispatcher] Automated subscriber alert check status: {dispatch_res}")
+    except Exception as dispatch_err:
+        print(f"[Telemetry Dispatcher] Alert dispatch note: {dispatch_err}")
+
     fallback_used = bool(ml_output.get("fallback_used", False))
     mode_str = str(ml_output.get("mode", "Live Operational Telemetry"))
     source_str = str(ml_output.get("source", "Open-Meteo Live API"))
@@ -524,10 +531,13 @@ def get_tournament_summary():
 def subscribe_user_email(req: SubscriptionRequest):
     import os, json
     email = req.email.strip().lower()
-    if "@" not in email or "." not in email:
-        raise HTTPException(status_code=400, detail="Invalid email format.")
+    if not email or "@" not in email or "." not in email:
+        raise HTTPException(status_code=400, detail="Invalid email format. Please enter a valid observer email address (e.g. user@domain.com).")
 
-    threshold = req.threshold if req.threshold is not None else 100
+    try:
+        threshold = int(req.threshold) if req.threshold is not None else 100
+    except (ValueError, TypeError):
+        threshold = 100
     frequency = req.frequency if req.frequency else "6h"
 
     os.makedirs("data", exist_ok=True)
@@ -542,7 +552,7 @@ def subscribe_user_email(req: SubscriptionRequest):
 
     existing_index = -1
     for i, sub in enumerate(subscribers):
-        sub_email = sub if isinstance(sub, str) else sub.get("email")
+        sub_email = (sub if isinstance(sub, str) else sub.get("email", "")).strip().lower()
         if sub_email == email:
             existing_index = i
             break
@@ -554,7 +564,16 @@ def subscribe_user_email(req: SubscriptionRequest):
         existing_freq = existing_sub.get("frequency", "6h") if isinstance(existing_sub, dict) else "6h"
 
         if existing_thresh == threshold and existing_freq == frequency:
-            raise HTTPException(status_code=400, detail=f"This email ({email}) is already subscribed with these exact settings.")
+            welcome_res = send_welcome_email(email, threshold, frequency, is_update=False)
+            return {
+                "status": "success",
+                "message": f"This email ({email}) is already subscribed with active alert settings.",
+                "is_update": False,
+                "already_subscribed": True,
+                "threshold": threshold,
+                "frequency": frequency,
+                "email_delivery": welcome_res
+            }
         
         last_sent = existing_sub.get("last_sent", 0.0) if isinstance(existing_sub, dict) else 0.0
         subscribers[existing_index] = {"email": email, "threshold": threshold, "frequency": frequency, "last_sent": last_sent}
@@ -568,7 +587,14 @@ def subscribe_user_email(req: SubscriptionRequest):
     welcome_res = send_welcome_email(email, threshold, frequency, is_update=is_update)
     msg_text = f"Successfully updated alert preferences for {email}!" if is_update else f"Successfully subscribed {email}!"
 
-    return {"status": "success", "message": msg_text, "is_update": is_update, "threshold": threshold, "frequency": frequency, "email_delivery": welcome_res}
+    return {
+        "status": "success",
+        "message": msg_text,
+        "is_update": is_update,
+        "threshold": threshold,
+        "frequency": frequency,
+        "email_delivery": welcome_res
+    }
 
 
 
@@ -580,9 +606,12 @@ def subscribe_user_email(req: SubscriptionRequest):
 def unsubscribe_user_email(req: SubscriptionRequest):
     import os, json
     email = req.email.strip().lower()
+    if not email or "@" not in email or "." not in email:
+        raise HTTPException(status_code=400, detail="Invalid email format. Please enter a valid registered email address.")
+
     sub_file = os.path.join("data", "subscribers.json")
     if not os.path.exists(sub_file):
-        raise HTTPException(status_code=404, detail="No active subscribers found.")
+        raise HTTPException(status_code=404, detail="No active subscribers found in system.")
 
     try:
         with open(sub_file, "r") as f:
@@ -590,20 +619,23 @@ def unsubscribe_user_email(req: SubscriptionRequest):
     except Exception:
         subscribers = []
 
-    updated_subscribers = [s for s in subscribers if (s if isinstance(s, str) else s.get("email")) != email]
+    updated_subscribers = [
+        s for s in subscribers
+        if (s if isinstance(s, str) else s.get("email", "")).strip().lower() != email
+    ]
+
     if len(updated_subscribers) == len(subscribers):
         raise HTTPException(status_code=404, detail=f"Email '{email}' not found in active subscriber list.")
 
     with open(sub_file, "w") as f:
         json.dump(updated_subscribers, f, indent=2)
 
-    try:
-        from alerts import send_unsubscribe_email
-    except ImportError:
-        from src.alerts import send_unsubscribe_email
-    
     unsub_res = send_unsubscribe_email(email)
-    return {"status": "success", "message": f"Successfully unsubscribed {email}.", "email_delivery": unsub_res}
+    return {
+        "status": "success",
+        "message": f"Successfully unsubscribed {email}.",
+        "email_delivery": unsub_res
+    }
 
 
 

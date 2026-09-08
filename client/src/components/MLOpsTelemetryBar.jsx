@@ -14,6 +14,11 @@ export function EmailAlertDispatcher() {
   const [errorMsg, setErrorMsg] = useState('');
 
   const getApiUrl = (path) => {
+    if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+      const envUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+      const cleanBase = envUrl.replace(/\/$/, '');
+      return `${cleanBase}${path}`;
+    }
     const envUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || 'https://pearls-aqi-predictor-production.up.railway.app';
     const cleanBase = envUrl.replace(/\/$/, '');
     return `${cleanBase}${path}`;

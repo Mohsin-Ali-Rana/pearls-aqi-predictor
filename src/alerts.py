@@ -22,7 +22,9 @@ def get_cooldown_seconds(freq_str: str) -> float:
         return 86400.0  # 24 hours
     elif freq_str == "6h":
         return 21600.0  # 6 hours
-    return 3600.0       # 1 hour default
+    elif freq_str == "1h" or freq_str == "hourly":
+        return 3600.0   # 1 hour
+    return 21600.0      # 6 hours default
 
 
 
@@ -244,15 +246,24 @@ def dispatch_hazardous_aqi_alerts(current_aqi: float, forecast_24h_aqi: float, a
 
     for sub in subscribers:
         if isinstance(sub, str):
-            email = sub
-            thresh = 100
+            email = sub.strip().lower()
+            thresh = 100.0
             freq = "6h"
             last_sent = 0.0
         else:
-            email = sub.get("email")
-            thresh = sub.get("threshold", 100)
-            freq = sub.get("frequency", "6h")
-            last_sent = sub.get("last_sent", 0.0)
+            email = str(sub.get("email", "")).strip().lower()
+            try:
+                thresh = float(sub.get("threshold", 100))
+            except (ValueError, TypeError):
+                thresh = 100.0
+            freq = str(sub.get("frequency", "6h"))
+            try:
+                last_sent = float(sub.get("last_sent", 0.0))
+            except (ValueError, TypeError):
+                last_sent = 0.0
+
+        if not email:
+            continue
 
         cooldown_sec = get_cooldown_seconds(freq)
 
@@ -262,7 +273,7 @@ def dispatch_hazardous_aqi_alerts(current_aqi: float, forecast_24h_aqi: float, a
                 sub["last_sent"] = now
                 updated_subscribers.append(sub)
             else:
-                updated_subscribers.append({"email": email, "threshold": thresh, "frequency": freq, "last_sent": now})
+                updated_subscribers.append({"email": email, "threshold": int(thresh), "frequency": freq, "last_sent": now})
         else:
             updated_subscribers.append(sub)
 
