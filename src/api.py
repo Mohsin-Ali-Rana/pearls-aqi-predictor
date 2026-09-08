@@ -565,9 +565,11 @@ def subscribe_user_email(req: SubscriptionRequest):
 
         if existing_thresh == threshold and existing_freq == frequency:
             welcome_res = send_welcome_email(email, threshold, frequency, is_update=False)
+            if welcome_res.get("status") == "error":
+                raise HTTPException(status_code=500, detail=f"Email dispatch error: {welcome_res.get('reason')}")
             return {
                 "status": "success",
-                "message": f"This email ({email}) is already subscribed with active alert settings.",
+                "message": f"This email ({email}) is already active with these settings.",
                 "is_update": False,
                 "already_subscribed": True,
                 "threshold": threshold,
@@ -585,7 +587,13 @@ def subscribe_user_email(req: SubscriptionRequest):
         json.dump(subscribers, f, indent=2)
 
     welcome_res = send_welcome_email(email, threshold, frequency, is_update=is_update)
+
+    if welcome_res.get("status") == "error":
+        raise HTTPException(status_code=500, detail=f"Subscribed {email}, but notification email failed to send: {welcome_res.get('reason')}")
+
     msg_text = f"Successfully updated alert preferences for {email}!" if is_update else f"Successfully subscribed {email}!"
+    if welcome_res.get("status") == "dry_run":
+        msg_text += " (Note: SMTP credentials unconfigured on backend server; email delivery simulated)."
 
     return {
         "status": "success",
@@ -631,9 +639,17 @@ def unsubscribe_user_email(req: SubscriptionRequest):
         json.dump(updated_subscribers, f, indent=2)
 
     unsub_res = send_unsubscribe_email(email)
+
+    if unsub_res.get("status") == "error":
+        raise HTTPException(status_code=500, detail=f"Unsubscribed {email}, but confirmation email failed to send: {unsub_res.get('reason')}")
+
+    msg_text = f"Successfully unsubscribed {email}."
+    if unsub_res.get("status") == "dry_run":
+        msg_text += " (Note: SMTP credentials unconfigured on backend server environment)."
+
     return {
         "status": "success",
-        "message": f"Successfully unsubscribed {email}.",
+        "message": msg_text,
         "email_delivery": unsub_res
     }
 

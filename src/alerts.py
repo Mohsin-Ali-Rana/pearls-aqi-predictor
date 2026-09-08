@@ -280,7 +280,9 @@ def dispatch_hazardous_aqi_alerts(current_aqi: float, forecast_24h_aqi: float, a
     if not eligible_subscribers:
         return {"status": "skipped", "reason": "No subscribers meet threshold or cooldown conditions"}
 
-    if not (SMTP_HOST and SMTP_USER and SMTP_PASSWORD):
+    host, port, user, password, sender_name = get_smtp_config()
+
+    if not (host and user and password):
         print(f"[Alert Dispatcher] Hazardous AQI ({max_aqi:.1f}) detected for {LOCATION_NAME}!")
         with open(sub_file, "w") as f:
             json.dump(updated_subscribers, f, indent=2)
@@ -294,17 +296,24 @@ def dispatch_hazardous_aqi_alerts(current_aqi: float, forecast_24h_aqi: float, a
 
     sent_count = 0
     try:
-        server = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=10.0)
-        server.starttls()
-        server.login(SMTP_USER, SMTP_PASSWORD)
+        if port == 465:
+            server = smtplib.SMTP_SSL(host, port, timeout=12.0)
+        else:
+            server = smtplib.SMTP(host, port, timeout=12.0)
+            server.starttls()
 
-        sender_header = formataddr((SMTP_SENDER_NAME, SMTP_USER)) if SMTP_USER else SMTP_SENDER_NAME
+        server.login(user, password)
+
+        sender_header = formataddr((sender_name, user))
 
         for recipient, thresh in eligible_subscribers:
             msg = MIMEMultipart("alternative")
             msg["From"] = sender_header
             msg["To"] = recipient
+            msg["Reply-To"] = user
             msg["Subject"] = subject
+            msg["X-Mailer"] = "PEARLS-AQI-Predictor/2.0"
+            msg["Auto-Submitted"] = "auto-generated"
             
             plain_body = (
                 f"PEARLS AQI Intelligence System Advisory\n"
@@ -317,10 +326,10 @@ def dispatch_hazardous_aqi_alerts(current_aqi: float, forecast_24h_aqi: float, a
             )
             html_body = build_alert_html_email(recipient, LOCATION_NAME, current_aqi, forecast_24h_aqi, aqi_status, thresh)
 
-            msg.attach(MIMEText(plain_body, "plain"))
-            msg.attach(MIMEText(html_body, "html"))
+            msg.attach(MIMEText(plain_body, "plain", "utf-8"))
+            msg.attach(MIMEText(html_body, "html", "utf-8"))
             
-            server.sendmail(SMTP_USER or sender_header, [recipient], msg.as_string())
+            server.sendmail(user, [recipient], msg.as_string())
             sent_count += 1
 
         server.quit()
@@ -339,11 +348,26 @@ def dispatch_hazardous_aqi_alerts(current_aqi: float, forecast_24h_aqi: float, a
 
 
 
+def get_smtp_config():
+    host = os.getenv("SMTP_HOST") or SMTP_HOST or "smtp.gmail.com"
+    port_val = os.getenv("SMTP_PORT") or SMTP_PORT or 587
+    try:
+        port = int(port_val)
+    except (ValueError, TypeError):
+        port = 587
+    user = os.getenv("SMTP_USER") or SMTP_USER or ""
+    password = os.getenv("SMTP_PASSWORD") or SMTP_PASSWORD or ""
+    sender_name = os.getenv("SMTP_SENDER_NAME") or SMTP_SENDER_NAME or "Pearls AQI Intelligence"
+    return host, port, user, password, sender_name
+
+
 # Subscribed new user ko welcome email send karne ka handler
 def send_welcome_email(recipient_email: str, threshold: int = 100, frequency: str = "6h", is_update: bool = False) -> dict:
-    if not (SMTP_HOST and SMTP_USER and SMTP_PASSWORD):
-        print(f"[Welcome Email] SMTP credentials unconfigured in .env. Dry-run mode for {recipient_email}.")
-        return {"status": "dry_run", "message": "SMTP credentials unconfigured."}
+    host, port, user, password, sender_name = get_smtp_config()
+
+    if not (host and user and password):
+        print(f"[Welcome Email] SMTP credentials unconfigured. Dry-run mode for {recipient_email}.")
+        return {"status": "dry_run", "message": "SMTP credentials unconfigured on backend environment."}
 
     freq_label = "Max 1 alert per 6 hours" if frequency == "6h" else ("Max 1 alert per day" if frequency == "24h" else "Max 1 alert per hour")
 
@@ -360,20 +384,27 @@ def send_welcome_email(recipient_email: str, threshold: int = 100, frequency: st
     html_body = build_welcome_html_email(recipient_email, LOCATION_NAME, threshold, frequency, is_update=is_update)
 
     try:
-        server = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=10.0)
-        server.starttls()
-        server.login(SMTP_USER, SMTP_PASSWORD)
+        if port == 465:
+            server = smtplib.SMTP_SSL(host, port, timeout=12.0)
+        else:
+            server = smtplib.SMTP(host, port, timeout=12.0)
+            server.starttls()
 
-        sender_header = formataddr((SMTP_SENDER_NAME, SMTP_USER)) if SMTP_USER else SMTP_SENDER_NAME
+        server.login(user, password)
+
+        sender_header = formataddr((sender_name, user))
         msg = MIMEMultipart("alternative")
         msg["From"] = sender_header
         msg["To"] = recipient_email
+        msg["Reply-To"] = user
         msg["Subject"] = subject
+        msg["X-Mailer"] = "PEARLS-AQI-Predictor/2.0"
+        msg["Auto-Submitted"] = "auto-generated"
 
-        msg.attach(MIMEText(plain_body, "plain"))
-        msg.attach(MIMEText(html_body, "html"))
+        msg.attach(MIMEText(plain_body, "plain", "utf-8"))
+        msg.attach(MIMEText(html_body, "html", "utf-8"))
 
-        server.sendmail(SMTP_USER or sender_header, [recipient_email], msg.as_string())
+        server.sendmail(user, [recipient_email], msg.as_string())
         server.quit()
         print(f"[Welcome Email] Successfully dispatched executive HTML email to {recipient_email}!")
         return {"status": "success", "message": f"Executive welcome email sent to {recipient_email}"}
@@ -457,11 +488,13 @@ def build_unsubscribe_html_email(recipient_email: str, location_name: str) -> st
 
 # Unsubscribe user ko confirmation email send karne ka handler
 def send_unsubscribe_email(recipient_email: str) -> dict:
-    if not (SMTP_HOST and SMTP_USER and SMTP_PASSWORD):
-        print(f"[Unsubscribe Email] SMTP credentials unconfigured in .env. Dry-run mode for {recipient_email}.")
-        return {"status": "dry_run", "message": "SMTP credentials unconfigured."}
+    host, port, user, password, sender_name = get_smtp_config()
 
-    subject = f"Unsubscribed Confirmed: PEARLS AQI Automated Alert Dispatcher"
+    if not (host and user and password):
+        print(f"[Unsubscribe Email] SMTP credentials unconfigured. Dry-run mode for {recipient_email}.")
+        return {"status": "dry_run", "message": "SMTP credentials unconfigured on backend environment."}
+
+    subject = f"Unsubscription Confirmed: PEARLS AQI Automated Alert Dispatcher"
     
     plain_body = (
         f"PEARLS AQI Intelligence System Advisory\n\n"
@@ -473,20 +506,27 @@ def send_unsubscribe_email(recipient_email: str) -> dict:
     html_body = build_unsubscribe_html_email(recipient_email, LOCATION_NAME)
 
     try:
-        server = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=10.0)
-        server.starttls()
-        server.login(SMTP_USER, SMTP_PASSWORD)
+        if port == 465:
+            server = smtplib.SMTP_SSL(host, port, timeout=12.0)
+        else:
+            server = smtplib.SMTP(host, port, timeout=12.0)
+            server.starttls()
 
-        sender_header = formataddr((SMTP_SENDER_NAME, SMTP_USER)) if SMTP_USER else SMTP_SENDER_NAME
+        server.login(user, password)
+
+        sender_header = formataddr((sender_name, user))
         msg = MIMEMultipart("alternative")
         msg["From"] = sender_header
         msg["To"] = recipient_email
+        msg["Reply-To"] = user
         msg["Subject"] = subject
+        msg["X-Mailer"] = "PEARLS-AQI-Predictor/2.0"
+        msg["Auto-Submitted"] = "auto-generated"
 
-        msg.attach(MIMEText(plain_body, "plain"))
-        msg.attach(MIMEText(html_body, "html"))
+        msg.attach(MIMEText(plain_body, "plain", "utf-8"))
+        msg.attach(MIMEText(html_body, "html", "utf-8"))
 
-        server.sendmail(SMTP_USER or sender_header, [recipient_email], msg.as_string())
+        server.sendmail(user, [recipient_email], msg.as_string())
         server.quit()
         print(f"[Unsubscribe Email] Dispatched unsubscription confirmation email to {recipient_email}!")
         return {"status": "success", "message": f"Unsubscribe confirmation email sent to {recipient_email}"}
