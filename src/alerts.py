@@ -1,6 +1,7 @@
 import os
 import json
 import time
+import socket
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -10,6 +11,59 @@ try:
     from config import SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_SENDER_NAME, LOCATION_NAME
 except ImportError:
     from src.config import SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_SENDER_NAME, LOCATION_NAME
+
+
+def connect_smtp_server(host: str, port: int, timeout: float = 12.0):
+    """
+    Robust SMTP connection helper for cloud containers (e.g. Railway/Docker).
+    Explicitly resolves IPv4 (AF_INET) addresses to prevent '[Errno 101] Network is unreachable'
+    caused by unrouted IPv6 DNS defaults, with automatic fallback to SSL port 465.
+    """
+    last_err = None
+
+    # Step 1: Force IPv4 DNS resolution
+    target_ips = []
+    try:
+        addr_info = socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM)
+        target_ips = [item[4][0] for item in addr_info if item[4]]
+    except Exception as dns_err:
+        print(f"[SMTP Connection] IPv4 DNS resolution note for {host}:{port}: {dns_err}")
+
+    targets = target_ips if target_ips else [host]
+
+    # Step 2: Attempt connection over resolved target IPs
+    for target in targets:
+        try:
+            if port == 465:
+                server = smtplib.SMTP_SSL(target, port, timeout=timeout)
+            else:
+                server = smtplib.SMTP(target, port, timeout=timeout)
+                server.ehlo()
+                server.starttls()
+                server.ehlo()
+            return server
+        except Exception as err:
+            last_err = err
+
+    # Step 3: Dual-stack / port fallback strategy (try SSL port 465 if 587 failed)
+    if port != 465:
+        ssl_targets = []
+        try:
+            addr_info = socket.getaddrinfo(host, 465, socket.AF_INET, socket.SOCK_STREAM)
+            ssl_targets = [item[4][0] for item in addr_info if item[4]]
+        except Exception:
+            ssl_targets = [host]
+
+        for target in (ssl_targets if ssl_targets else [host]):
+            try:
+                server = smtplib.SMTP_SSL(target, 465, timeout=timeout)
+                return server
+            except Exception as err:
+                last_err = err
+
+    if last_err:
+        raise last_err
+    raise RuntimeError(f"Unable to establish SMTP connection to {host}:{port}")
 
 # In-memory cooldown tracking (timestamp of last sent alert)
 _LAST_ALERT_TIME = 0.0
@@ -296,12 +350,7 @@ def dispatch_hazardous_aqi_alerts(current_aqi: float, forecast_24h_aqi: float, a
 
     sent_count = 0
     try:
-        if port == 465:
-            server = smtplib.SMTP_SSL(host, port, timeout=12.0)
-        else:
-            server = smtplib.SMTP(host, port, timeout=12.0)
-            server.starttls()
-
+        server = connect_smtp_server(host, port, timeout=12.0)
         server.login(user, password)
 
         sender_header = formataddr((sender_name, user))
@@ -384,12 +433,7 @@ def send_welcome_email(recipient_email: str, threshold: int = 100, frequency: st
     html_body = build_welcome_html_email(recipient_email, LOCATION_NAME, threshold, frequency, is_update=is_update)
 
     try:
-        if port == 465:
-            server = smtplib.SMTP_SSL(host, port, timeout=12.0)
-        else:
-            server = smtplib.SMTP(host, port, timeout=12.0)
-            server.starttls()
-
+        server = connect_smtp_server(host, port, timeout=12.0)
         server.login(user, password)
 
         sender_header = formataddr((sender_name, user))
@@ -506,12 +550,7 @@ def send_unsubscribe_email(recipient_email: str) -> dict:
     html_body = build_unsubscribe_html_email(recipient_email, LOCATION_NAME)
 
     try:
-        if port == 465:
-            server = smtplib.SMTP_SSL(host, port, timeout=12.0)
-        else:
-            server = smtplib.SMTP(host, port, timeout=12.0)
-            server.starttls()
-
+        server = connect_smtp_server(host, port, timeout=12.0)
         server.login(user, password)
 
         sender_header = formataddr((sender_name, user))
