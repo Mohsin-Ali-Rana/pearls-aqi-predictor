@@ -336,9 +336,45 @@ def dispatch_hazardous_aqi_alerts(current_aqi: float, forecast_24h_aqi: float, a
 
     subject = f"AQI Threshold Alert: {LOCATION_NAME} - Observed AQI {current_aqi:.1f} ({aqi_status})"
 
+    # Method 1: Resend HTTP API (HTTPS Port 443 - Bypasses Railway Egress Firewall)
+    resend_api_key = os.getenv("RESEND_API_KEY")
+    if resend_api_key:
+        sent_count = 0
+        for recipient, thresh in eligible_subscribers:
+            plain_body = (
+                f"PEARLS AQI Intelligence System Advisory\n"
+                f"Location: {LOCATION_NAME}\n"
+                f"Current Observed AQI: {current_aqi:.1f} ({aqi_status})\n"
+                f"24-Hour Forecast AQI: {forecast_24h_aqi:.1f}\n"
+                f"Configured Safety Threshold: AQI > {thresh}\n\n"
+                f"Please take appropriate health safety precautions.\n"
+                f"PEARLS MLOps Engineering Team"
+            )
+            html_body = build_alert_html_email(recipient, LOCATION_NAME, current_aqi, forecast_24h_aqi, aqi_status, thresh)
+            res = send_email_via_resend(resend_api_key, recipient, subject, html_body, plain_body, sender_name)
+            if res.get("status") == "success":
+                sent_count += 1
+
+        with open(sub_file, "w") as f:
+            json.dump(updated_subscribers, f, indent=2)
+
+        print(f"[Alert Dispatcher] Dispatched custom AQI email alerts via Resend to {sent_count} subscribers!")
+        return {"status": "success", "emails_sent": sent_count}
+
+    # Method 2: Standard Direct SMTP
+    if not (host and user and password):
+        print(f"[Alert Dispatcher] Hazardous AQI ({max_aqi:.1f}) detected for {LOCATION_NAME}!")
+        with open(sub_file, "w") as f:
+            json.dump(updated_subscribers, f, indent=2)
+        return {
+            "status": "dry_run",
+            "message": "Hazardous AQI alert logged. SMTP credentials unconfigured in environment.",
+            "subscribers_queued": len(eligible_subscribers)
+        }
+
     sent_count = 0
     try:
-        server = connect_smtp_server(host, port, timeout=12.0)
+        server = connect_smtp_server(host, port, timeout=4.0)
         server.login(user, password)
 
         sender_header = formataddr((sender_name, user))
@@ -377,8 +413,11 @@ def dispatch_hazardous_aqi_alerts(current_aqi: float, forecast_24h_aqi: float, a
         print(f"[Alert Dispatcher] Dispatched custom AQI email alerts to {sent_count} subscribers!")
         return {"status": "success", "emails_sent": sent_count}
     except Exception as e:
-        print(f"[Alert Dispatcher] Failed to send SMTP emails: {e}")
-        return {"status": "error", "reason": str(e)}
+        err_msg = str(e)
+        if "timed out" in err_msg.lower() or "connection attempts" in err_msg.lower():
+            err_msg += " (Railway egress firewall is blocking outbound SMTP ports. Please add RESEND_API_KEY to Railway Variables for HTTPS email dispatch)."
+        print(f"[Alert Dispatcher] Failed to send SMTP emails: {err_msg}")
+        return {"status": "error", "reason": err_msg}
 
 
 
@@ -398,16 +437,47 @@ def get_smtp_config():
     return host, port, user, password, sender_name
 
 
+def send_email_via_resend(api_key: str, recipient: str, subject: str, html_body: str, plain_body: str, sender_name: str) -> dict:
+    """
+    Dispatches emails via Resend HTTP API over standard HTTPS Port 443.
+    Bypasses cloud firewall restrictions on outbound SMTP ports (25, 465, 587).
+    """
+    import urllib.request
+    import json
+
+    url = "https://api.resend.com/emails"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+
+    from_address = os.getenv("RESEND_FROM") or f"{sender_name} <onboarding@resend.dev>"
+
+    payload = {
+        "from": from_address,
+        "to": [recipient],
+        "subject": subject,
+        "html": html_body,
+        "text": plain_body
+    }
+
+    req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
+
+    try:
+        with urllib.request.urlopen(req, timeout=10.0) as response:
+            res_data = json.loads(response.read().decode("utf-8"))
+            print(f"[Resend HTTP API] Dispatched email to {recipient} (ID: {res_data.get('id')})")
+            return {"status": "success", "message": f"Email sent via Resend HTTP API to {recipient}", "id": res_data.get("id")}
+    except Exception as e:
+        print(f"[Resend HTTP API] Error sending email to {recipient}: {e}")
+        return {"status": "error", "reason": f"Resend HTTP API error: {e}"}
+
+
 # Subscribed new user ko welcome email send karne ka handler
 def send_welcome_email(recipient_email: str, threshold: int = 100, frequency: str = "6h", is_update: bool = False) -> dict:
     host, port, user, password, sender_name = get_smtp_config()
 
-    if not (host and user and password):
-        print(f"[Welcome Email] SMTP credentials unconfigured. Dry-run mode for {recipient_email}.")
-        return {"status": "dry_run", "message": "SMTP credentials unconfigured on backend environment."}
-
     freq_label = "Max 1 alert per 6 hours" if frequency == "6h" else ("Max 1 alert per day" if frequency == "24h" else "Max 1 alert per hour")
-
     subject = f"Subscription Preferences Updated: PEARLS AQI Automated Alert Dispatcher" if is_update else f"Subscription Confirmation: PEARLS AQI Automated Alert Dispatcher"
     
     plain_body = (
@@ -420,8 +490,18 @@ def send_welcome_email(recipient_email: str, threshold: int = 100, frequency: st
 
     html_body = build_welcome_html_email(recipient_email, LOCATION_NAME, threshold, frequency, is_update=is_update)
 
+    # Method 1: Resend HTTP API (HTTPS Port 443 - Bypasses Railway SMTP Egress Firewall)
+    resend_api_key = os.getenv("RESEND_API_KEY")
+    if resend_api_key:
+        return send_email_via_resend(resend_api_key, recipient_email, subject, html_body, plain_body, sender_name)
+
+    # Method 2: Standard Direct SMTP
+    if not (host and user and password):
+        print(f"[Welcome Email] SMTP credentials unconfigured. Dry-run mode for {recipient_email}.")
+        return {"status": "dry_run", "message": "SMTP credentials unconfigured on backend environment."}
+
     try:
-        server = connect_smtp_server(host, port, timeout=12.0)
+        server = connect_smtp_server(host, port, timeout=4.0)
         server.login(user, password)
 
         sender_header = formataddr((sender_name, user))
@@ -441,8 +521,11 @@ def send_welcome_email(recipient_email: str, threshold: int = 100, frequency: st
         print(f"[Welcome Email] Successfully dispatched executive HTML email to {recipient_email}!")
         return {"status": "success", "message": f"Executive welcome email sent to {recipient_email}"}
     except Exception as e:
-        print(f"[Welcome Email] SMTP Error sending to {recipient_email}: {e}")
-        return {"status": "error", "reason": str(e)}
+        err_msg = str(e)
+        if "timed out" in err_msg.lower() or "connection attempts" in err_msg.lower():
+            err_msg += " (Railway egress firewall is blocking outbound SMTP ports. Please add RESEND_API_KEY to Railway Variables for HTTPS email dispatch)."
+        print(f"[Welcome Email] SMTP Error sending to {recipient_email}: {err_msg}")
+        return {"status": "error", "reason": err_msg}
 
 
 
@@ -522,10 +605,6 @@ def build_unsubscribe_html_email(recipient_email: str, location_name: str) -> st
 def send_unsubscribe_email(recipient_email: str) -> dict:
     host, port, user, password, sender_name = get_smtp_config()
 
-    if not (host and user and password):
-        print(f"[Unsubscribe Email] SMTP credentials unconfigured. Dry-run mode for {recipient_email}.")
-        return {"status": "dry_run", "message": "SMTP credentials unconfigured on backend environment."}
-
     subject = f"Unsubscription Confirmed: PEARLS AQI Automated Alert Dispatcher"
     
     plain_body = (
@@ -537,8 +616,18 @@ def send_unsubscribe_email(recipient_email: str) -> dict:
 
     html_body = build_unsubscribe_html_email(recipient_email, LOCATION_NAME)
 
+    # Method 1: Resend HTTP API (HTTPS Port 443 - Bypasses Railway SMTP Egress Firewall)
+    resend_api_key = os.getenv("RESEND_API_KEY")
+    if resend_api_key:
+        return send_email_via_resend(resend_api_key, recipient_email, subject, html_body, plain_body, sender_name)
+
+    # Method 2: Standard Direct SMTP
+    if not (host and user and password):
+        print(f"[Unsubscribe Email] SMTP credentials unconfigured. Dry-run mode for {recipient_email}.")
+        return {"status": "dry_run", "message": "SMTP credentials unconfigured on backend environment."}
+
     try:
-        server = connect_smtp_server(host, port, timeout=12.0)
+        server = connect_smtp_server(host, port, timeout=4.0)
         server.login(user, password)
 
         sender_header = formataddr((sender_name, user))
@@ -558,5 +647,8 @@ def send_unsubscribe_email(recipient_email: str) -> dict:
         print(f"[Unsubscribe Email] Dispatched unsubscription confirmation email to {recipient_email}!")
         return {"status": "success", "message": f"Unsubscribe confirmation email sent to {recipient_email}"}
     except Exception as e:
-        print(f"[Unsubscribe Email] SMTP Error sending to {recipient_email}: {e}")
-        return {"status": "error", "reason": str(e)}
+        err_msg = str(e)
+        if "timed out" in err_msg.lower() or "connection attempts" in err_msg.lower():
+            err_msg += " (Railway egress firewall is blocking outbound SMTP ports. Please add RESEND_API_KEY to Railway Variables for HTTPS email dispatch)."
+        print(f"[Unsubscribe Email] SMTP Error sending to {recipient_email}: {err_msg}")
+        return {"status": "error", "reason": err_msg}
