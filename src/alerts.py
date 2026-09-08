@@ -13,11 +13,11 @@ except ImportError:
     from src.config import SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_SENDER_NAME, LOCATION_NAME
 
 
-def connect_smtp_server(host: str, port: int = 587, timeout: float = 3.0):
+def connect_smtp_server(host: str = "smtp.gmail.com", port: int = 465, timeout: float = 12.0):
     """
-    Establishes direct SMTP / SMTPS connection using host domain ('smtp.gmail.com')
-    over IPv4 (AF_INET) to prevent '[Errno 101] Network is unreachable' in cloud containers
-    without IPv6 egress routing.
+    Establishes direct SMTPS / SMTP connection using host domain ('smtp.gmail.com')
+    over IPv4 (AF_INET) to prevent '[Errno 101] Network is unreachable' in cloud containers.
+    Defaults to Port 465 Direct SSL (Nodemailer method) with fallback to Port 587.
     """
     orig_getaddrinfo = socket.getaddrinfo
 
@@ -27,10 +27,7 @@ def connect_smtp_server(host: str, port: int = 587, timeout: float = 3.0):
         return ipv4_res if ipv4_res else res
 
     last_err = None
-    ports_to_try = [port]
-    alt_port = 465 if port != 465 else 587
-    if alt_port not in ports_to_try:
-        ports_to_try.append(alt_port)
+    ports_to_try = [465, 587] if port == 465 else [port, 465 if port != 465 else 587]
 
     socket.getaddrinfo = ipv4_only_getaddrinfo
     try:
