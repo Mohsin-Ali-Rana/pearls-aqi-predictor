@@ -160,12 +160,12 @@ def run_inference(force_model_reload: bool = False):
     hw_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     try:
         hw_future = hw_executor.submit(_fetch_hopsworks_batch)
-        batch_data = hw_future.result(timeout=45.0)
+        batch_data = hw_future.result(timeout=5.0)
         if batch_data is not None and not batch_data.empty:
             feature_store_connected = True
             print(f"Successfully retrieved factual online feature vector from Hopsworks Feature Store ({len(batch_data)} records).")
     except concurrent.futures.TimeoutError:
-        print("Hopsworks Feature Store query timed out (>45.0s). Serving local feature cache...")
+        print("Hopsworks Feature Store query timed out (>5.0s). Serving local feature cache...")
         feature_store_connected = False
         source = "Local Parquet Feature Cache (features.parquet)"
         mode = "Offline / Local Artifact Mode"
@@ -191,6 +191,38 @@ def run_inference(force_model_reload: bool = False):
 
     batch_data["time"] = pd.to_datetime(batch_data["time"])
     batch_data = batch_data.sort_values("time").reset_index(drop=True)
+
+    # 2.1 Live Data Freshness Verification (Auto-fetch fresh Open-Meteo telemetry if cache is older than 2h)
+    now_utc = datetime.now(timezone.utc)
+    latest_ts = pd.to_datetime(batch_data["time"].max()) if ("time" in batch_data.columns and not batch_data.empty) else None
+
+    data_is_stale = False
+    if latest_ts is not None:
+        ts_utc = latest_ts.tz_localize(timezone.utc) if latest_ts.tzinfo is None else latest_ts.tz_convert(timezone.utc)
+        age_hours = (now_utc - ts_utc).total_seconds() / 3600.0
+        if age_hours > 2.0:
+            data_is_stale = True
+            print(f"[Inference Engine] Cached data timestamp ({latest_ts}) is {age_hours:.1f} hours old (>2h). Refreshing live Open-Meteo telemetry...")
+
+    if data_is_stale or batch_data is None or batch_data.empty:
+        try:
+            try:
+                from fetch_raw_data import fetch_historical_aqi
+            except ImportError:
+                from src.fetch_raw_data import fetch_historical_aqi
+
+            fresh_raw = fetch_historical_aqi(LOCATION_LATITUDE, LOCATION_LONGITUDE, days=14)
+            if not fresh_raw.empty:
+                fresh_features = generate_features(fresh_raw)
+                if not fresh_features.empty:
+                    batch_data = fresh_features.sort_values("time").reset_index(drop=True)
+                    source = "Open-Meteo Live Synchronized API"
+                    mode = "Live Operational Telemetry"
+                    fallback_used = False
+                    print(f"[Inference Engine] Successfully fetched fresh live observations up to {batch_data['time'].max()}.")
+        except Exception as fresh_err:
+            print(f"[Inference Engine] Live observation fetch note ({fresh_err}). Serving existing dataset.")
+
     X_t0 = batch_data.tail(1).copy()
 
     if "pm2_5" not in batch_data.columns or batch_data["pm2_5"].dropna().empty:
