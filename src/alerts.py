@@ -338,7 +338,34 @@ def dispatch_hazardous_aqi_alerts(current_aqi: float, forecast_24h_aqi: float, a
 
     subject = f"AQI Threshold Alert: {LOCATION_NAME} - Observed AQI {current_aqi:.1f} ({aqi_status})"
 
-    # Method 1: Resend HTTP API (HTTPS Port 443 - Bypasses Railway Egress Firewall)
+    # Method 1: Google Gmail REST API (HTTPS Port 443)
+    gmail_client_id = os.getenv("GMAIL_CLIENT_ID")
+    gmail_client_secret = os.getenv("GMAIL_CLIENT_SECRET")
+    gmail_refresh_token = os.getenv("GMAIL_REFRESH_TOKEN")
+    if gmail_client_id and gmail_client_secret and gmail_refresh_token:
+        sent_count = 0
+        for recipient, thresh in eligible_subscribers:
+            plain_body = (
+                f"PEARLS AQI Intelligence System Advisory\n"
+                f"Location: {LOCATION_NAME}\n"
+                f"Current Observed AQI: {current_aqi:.1f} ({aqi_status})\n"
+                f"24-Hour Forecast AQI: {forecast_24h_aqi:.1f}\n"
+                f"Configured Safety Threshold: AQI > {thresh}\n\n"
+                f"Please take appropriate health safety precautions.\n"
+                f"PEARLS MLOps Engineering Team"
+            )
+            html_body = build_alert_html_email(recipient, LOCATION_NAME, current_aqi, forecast_24h_aqi, aqi_status, thresh)
+            res = send_email_via_gmail_api(gmail_client_id, gmail_client_secret, gmail_refresh_token, recipient, subject, html_body, plain_body, sender_name, user)
+            if res.get("status") == "success":
+                sent_count += 1
+
+        with open(sub_file, "w") as f:
+            json.dump(updated_subscribers, f, indent=2)
+
+        print(f"[Alert Dispatcher] Dispatched custom AQI email alerts via Gmail REST API to {sent_count} subscribers!")
+        return {"status": "success", "emails_sent": sent_count}
+
+    # Method 2: Resend HTTP API (HTTPS Port 443)
     resend_api_key = os.getenv("RESEND_API_KEY")
     if resend_api_key:
         sent_count = 0
@@ -484,6 +511,74 @@ def send_email_via_resend(api_key: str, recipient: str, subject: str, html_body:
         return {"status": "error", "reason": f"Resend HTTP API error: {e}"}
 
 
+def get_gmail_access_token(client_id: str, client_secret: str, refresh_token: str) -> str:
+    """
+    Exchanges OAuth2 refresh token for a fresh access token from Google OAuth2 API over HTTPS Port 443.
+    """
+    import urllib.request
+    import urllib.parse
+    import json
+
+    url = "https://oauth2.googleapis.com/token"
+    payload = urllib.parse.urlencode({
+        "client_id": client_id.strip(),
+        "client_secret": client_secret.strip(),
+        "refresh_token": refresh_token.strip(),
+        "grant_type": "refresh_token"
+    }).encode("utf-8")
+
+    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/x-www-form-urlencoded"}, method="POST")
+    with urllib.request.urlopen(req, timeout=10.0) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+        return data["access_token"]
+
+
+def send_email_via_gmail_api(client_id: str, client_secret: str, refresh_token: str, recipient: str, subject: str, html_body: str, plain_body: str, sender_name: str, user_email: str) -> dict:
+    """
+    Dispatches emails via Google Gmail REST API over HTTPS Port 443 using OAuth2.
+    Sends directly from user's real Gmail account to ANY recipient without SMTP firewall blocks.
+    """
+    import urllib.request
+    import json
+    import base64
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+    from email.utils import formataddr
+
+    try:
+        access_token = get_gmail_access_token(client_id, client_secret, refresh_token)
+        
+        from_email = user_email or "me"
+        msg = MIMEMultipart("alternative")
+        msg["From"] = formataddr((sender_name, from_email)) if from_email != "me" else sender_name
+        msg["To"] = recipient
+        msg["Subject"] = subject
+        msg["X-Mailer"] = "PEARLS-AQI-Predictor/2.0"
+        msg["Auto-Submitted"] = "auto-generated"
+
+        msg.attach(MIMEText(plain_body, "plain", "utf-8"))
+        msg.attach(MIMEText(html_body, "html", "utf-8"))
+
+        raw_bytes = msg.as_bytes()
+        raw_b64 = base64.urlsafe_b64encode(raw_bytes).decode("utf-8")
+
+        url = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send"
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json"
+        }
+        post_data = json.dumps({"raw": raw_b64}).encode("utf-8")
+
+        req = urllib.request.Request(url, data=post_data, headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=10.0) as resp:
+            res_data = json.loads(resp.read().decode("utf-8"))
+            print(f"[Gmail REST API] Dispatched email to {recipient} (ID: {res_data.get('id')})")
+            return {"status": "success", "message": f"Email sent via Gmail REST API to {recipient}", "id": res_data.get("id")}
+    except Exception as e:
+        print(f"[Gmail REST API] Error sending to {recipient}: {e}")
+        return {"status": "error", "reason": f"Gmail API error: {e}"}
+
+
 # Subscribed new user ko welcome email send karne ka handler
 def send_welcome_email(recipient_email: str, threshold: int = 100, frequency: str = "6h", is_update: bool = False) -> dict:
     host, port, user, password, sender_name = get_smtp_config()
@@ -501,7 +596,14 @@ def send_welcome_email(recipient_email: str, threshold: int = 100, frequency: st
 
     html_body = build_welcome_html_email(recipient_email, LOCATION_NAME, threshold, frequency, is_update=is_update)
 
-    # Method 1: Resend HTTP API (HTTPS Port 443)
+    # Method 1: Google Gmail REST API (HTTPS Port 443 - Uses Real Gmail Account over HTTPS)
+    gmail_client_id = os.getenv("GMAIL_CLIENT_ID")
+    gmail_client_secret = os.getenv("GMAIL_CLIENT_SECRET")
+    gmail_refresh_token = os.getenv("GMAIL_REFRESH_TOKEN")
+    if gmail_client_id and gmail_client_secret and gmail_refresh_token:
+        return send_email_via_gmail_api(gmail_client_id, gmail_client_secret, gmail_refresh_token, recipient_email, subject, html_body, plain_body, sender_name, user)
+
+    # Method 2: Resend HTTP API (HTTPS Port 443)
     resend_api_key = os.getenv("RESEND_API_KEY")
     if resend_api_key:
         return send_email_via_resend(resend_api_key, recipient_email, subject, html_body, plain_body, sender_name)
@@ -624,7 +726,14 @@ def send_unsubscribe_email(recipient_email: str) -> dict:
 
     html_body = build_unsubscribe_html_email(recipient_email, LOCATION_NAME)
 
-    # Method 1: Resend HTTP API (HTTPS Port 443)
+    # Method 1: Google Gmail REST API (HTTPS Port 443)
+    gmail_client_id = os.getenv("GMAIL_CLIENT_ID")
+    gmail_client_secret = os.getenv("GMAIL_CLIENT_SECRET")
+    gmail_refresh_token = os.getenv("GMAIL_REFRESH_TOKEN")
+    if gmail_client_id and gmail_client_secret and gmail_refresh_token:
+        return send_email_via_gmail_api(gmail_client_id, gmail_client_secret, gmail_refresh_token, recipient_email, subject, html_body, plain_body, sender_name, user)
+
+    # Method 2: Resend HTTP API (HTTPS Port 443)
     resend_api_key = os.getenv("RESEND_API_KEY")
     if resend_api_key:
         return send_email_via_resend(resend_api_key, recipient_email, subject, html_body, plain_body, sender_name)
