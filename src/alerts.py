@@ -13,45 +13,36 @@ except ImportError:
     from src.config import SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_SENDER_NAME, LOCATION_NAME
 
 
-def connect_smtp_server(host: str, port: int = 465, timeout: float = 4.0):
+def connect_smtp_server(host: str, port: int = 587, timeout: float = 12.0):
     """
-    Ultra-robust SMTP connection helper designed for cloud environments (Railway, Render, Vercel).
-    Prioritizes SMTPS Port 465 (SSL) over IPv4 to bypass cloud firewall restrictions on port 587,
-    with fast fallback and exception catching.
+    Establishes direct SMTP / SMTPS connection using host domain ('smtp.gmail.com')
+    to preserve TLS SNI SSL certificate validation. Tries configured port (587 or 465) with automatic fallback.
     """
-    errors = []
+    last_err = None
 
-    # Prioritize 465 (SSL) as cloud providers block 587/25 by default
-    ports_to_try = [465, 587] if port in (465, 587) else [port, 465, 587]
-    seen = set()
-    ports_to_try = [p for p in ports_to_try if not (p in seen or seen.add(p))]
+    ports_to_try = [port]
+    alt_port = 465 if port != 465 else 587
+    if alt_port not in ports_to_try:
+        ports_to_try.append(alt_port)
 
-    for target_port in ports_to_try:
-        target_ips = []
+    for p in ports_to_try:
         try:
-            addr_info = socket.getaddrinfo(host, target_port, socket.AF_INET, socket.SOCK_STREAM)
-            target_ips = [item[4][0] for item in addr_info if item[4]]
-        except Exception as dns_err:
-            print(f"[SMTP Connect] IPv4 DNS note for {host}:{target_port}: {dns_err}")
+            if p == 465:
+                server = smtplib.SMTP_SSL(host, p, timeout=timeout)
+            else:
+                server = smtplib.SMTP(host, p, timeout=timeout)
+                server.ehlo()
+                server.starttls()
+                server.ehlo()
+            print(f"[SMTP Connect] Successfully established connection to {host} on port {p}")
+            return server
+        except Exception as err:
+            print(f"[SMTP Connect] Connection attempt failed on {host}:{p} ({err})")
+            last_err = err
 
-        targets = target_ips if target_ips else [host]
-
-        for target in targets:
-            try:
-                if target_port == 465:
-                    server = smtplib.SMTP_SSL(target, target_port, timeout=timeout)
-                else:
-                    server = smtplib.SMTP(target, target_port, timeout=timeout)
-                    server.ehlo()
-                    server.starttls()
-                    server.ehlo()
-                print(f"[SMTP Connect] Successfully established connection to {host} on port {target_port}")
-                return server
-            except Exception as err:
-                print(f"[SMTP Connect] Connection attempt failed on {target}:{target_port} ({err})")
-                errors.append(f"Port {target_port} ({target}): {err}")
-
-    raise RuntimeError(f"All SMTP connection attempts to {host} failed ({'; '.join(errors)})")
+    if last_err:
+        raise last_err
+    raise RuntimeError(f"Unable to establish SMTP connection to {host}")
 
 # In-memory cooldown tracking (timestamp of last sent alert)
 _LAST_ALERT_TIME = 0.0
@@ -374,7 +365,7 @@ def dispatch_hazardous_aqi_alerts(current_aqi: float, forecast_24h_aqi: float, a
 
     sent_count = 0
     try:
-        server = connect_smtp_server(host, port, timeout=4.0)
+        server = connect_smtp_server(host, port, timeout=12.0)
         server.login(user, password)
 
         sender_header = formataddr((sender_name, user))
@@ -413,11 +404,8 @@ def dispatch_hazardous_aqi_alerts(current_aqi: float, forecast_24h_aqi: float, a
         print(f"[Alert Dispatcher] Dispatched custom AQI email alerts to {sent_count} subscribers!")
         return {"status": "success", "emails_sent": sent_count}
     except Exception as e:
-        err_msg = str(e)
-        if "timed out" in err_msg.lower() or "connection attempts" in err_msg.lower():
-            err_msg += " (Railway egress firewall is blocking outbound SMTP ports. Please add RESEND_API_KEY to Railway Variables for HTTPS email dispatch)."
-        print(f"[Alert Dispatcher] Failed to send SMTP emails: {err_msg}")
-        return {"status": "error", "reason": err_msg}
+        print(f"[Alert Dispatcher] Failed to send SMTP emails: {e}")
+        return {"status": "error", "reason": str(e)}
 
 
 
@@ -426,11 +414,11 @@ def dispatch_hazardous_aqi_alerts(current_aqi: float, forecast_24h_aqi: float, a
 
 def get_smtp_config():
     host = os.getenv("SMTP_HOST") or SMTP_HOST or "smtp.gmail.com"
-    port_val = os.getenv("SMTP_PORT") or SMTP_PORT or 465
+    port_val = os.getenv("SMTP_PORT") or SMTP_PORT or 587
     try:
         port = int(port_val)
     except (ValueError, TypeError):
-        port = 465
+        port = 587
     user = os.getenv("SMTP_USER") or SMTP_USER or ""
     password = os.getenv("SMTP_PASSWORD") or SMTP_PASSWORD or ""
     sender_name = os.getenv("SMTP_SENDER_NAME") or SMTP_SENDER_NAME or "Pearls AQI Intelligence"
@@ -490,7 +478,7 @@ def send_welcome_email(recipient_email: str, threshold: int = 100, frequency: st
 
     html_body = build_welcome_html_email(recipient_email, LOCATION_NAME, threshold, frequency, is_update=is_update)
 
-    # Method 1: Resend HTTP API (HTTPS Port 443 - Bypasses Railway SMTP Egress Firewall)
+    # Method 1: Resend HTTP API (HTTPS Port 443)
     resend_api_key = os.getenv("RESEND_API_KEY")
     if resend_api_key:
         return send_email_via_resend(resend_api_key, recipient_email, subject, html_body, plain_body, sender_name)
@@ -501,7 +489,7 @@ def send_welcome_email(recipient_email: str, threshold: int = 100, frequency: st
         return {"status": "dry_run", "message": "SMTP credentials unconfigured on backend environment."}
 
     try:
-        server = connect_smtp_server(host, port, timeout=4.0)
+        server = connect_smtp_server(host, port, timeout=12.0)
         server.login(user, password)
 
         sender_header = formataddr((sender_name, user))
@@ -521,11 +509,8 @@ def send_welcome_email(recipient_email: str, threshold: int = 100, frequency: st
         print(f"[Welcome Email] Successfully dispatched executive HTML email to {recipient_email}!")
         return {"status": "success", "message": f"Executive welcome email sent to {recipient_email}"}
     except Exception as e:
-        err_msg = str(e)
-        if "timed out" in err_msg.lower() or "connection attempts" in err_msg.lower():
-            err_msg += " (Railway egress firewall is blocking outbound SMTP ports. Please add RESEND_API_KEY to Railway Variables for HTTPS email dispatch)."
-        print(f"[Welcome Email] SMTP Error sending to {recipient_email}: {err_msg}")
-        return {"status": "error", "reason": err_msg}
+        print(f"[Welcome Email] SMTP Error sending to {recipient_email}: {e}")
+        return {"status": "error", "reason": str(e)}
 
 
 
@@ -616,7 +601,7 @@ def send_unsubscribe_email(recipient_email: str) -> dict:
 
     html_body = build_unsubscribe_html_email(recipient_email, LOCATION_NAME)
 
-    # Method 1: Resend HTTP API (HTTPS Port 443 - Bypasses Railway SMTP Egress Firewall)
+    # Method 1: Resend HTTP API (HTTPS Port 443)
     resend_api_key = os.getenv("RESEND_API_KEY")
     if resend_api_key:
         return send_email_via_resend(resend_api_key, recipient_email, subject, html_body, plain_body, sender_name)
@@ -627,7 +612,7 @@ def send_unsubscribe_email(recipient_email: str) -> dict:
         return {"status": "dry_run", "message": "SMTP credentials unconfigured on backend environment."}
 
     try:
-        server = connect_smtp_server(host, port, timeout=4.0)
+        server = connect_smtp_server(host, port, timeout=12.0)
         server.login(user, password)
 
         sender_header = formataddr((sender_name, user))
@@ -647,8 +632,5 @@ def send_unsubscribe_email(recipient_email: str) -> dict:
         print(f"[Unsubscribe Email] Dispatched unsubscription confirmation email to {recipient_email}!")
         return {"status": "success", "message": f"Unsubscribe confirmation email sent to {recipient_email}"}
     except Exception as e:
-        err_msg = str(e)
-        if "timed out" in err_msg.lower() or "connection attempts" in err_msg.lower():
-            err_msg += " (Railway egress firewall is blocking outbound SMTP ports. Please add RESEND_API_KEY to Railway Variables for HTTPS email dispatch)."
-        print(f"[Unsubscribe Email] SMTP Error sending to {recipient_email}: {err_msg}")
-        return {"status": "error", "reason": err_msg}
+        print(f"[Unsubscribe Email] SMTP Error sending to {recipient_email}: {e}")
+        return {"status": "error", "reason": str(e)}
