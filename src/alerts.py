@@ -13,7 +13,7 @@ except ImportError:
     from src.config import SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_SENDER_NAME, LOCATION_NAME
 
 
-def connect_smtp_server(host: str, port: int = 587, timeout: float = 12.0):
+def connect_smtp_server(host: str, port: int = 587, timeout: float = 3.0):
     """
     Establishes direct SMTP / SMTPS connection using host domain ('smtp.gmail.com')
     over IPv4 (AF_INET) to prevent '[Errno 101] Network is unreachable' in cloud containers

@@ -565,11 +565,12 @@ def subscribe_user_email(req: SubscriptionRequest):
 
         if existing_thresh == threshold and existing_freq == frequency:
             welcome_res = send_welcome_email(email, threshold, frequency, is_update=False)
+            msg_text = f"This email ({email}) is already active with these settings."
             if welcome_res.get("status") == "error":
-                raise HTTPException(status_code=500, detail=f"Email dispatch error: {welcome_res.get('reason')}")
+                msg_text += f" (Note: Email delivery timed out: {welcome_res.get('reason')})"
             return {
                 "status": "success",
-                "message": f"This email ({email}) is already active with these settings.",
+                "message": msg_text,
                 "is_update": False,
                 "already_subscribed": True,
                 "threshold": threshold,
@@ -588,11 +589,10 @@ def subscribe_user_email(req: SubscriptionRequest):
 
     welcome_res = send_welcome_email(email, threshold, frequency, is_update=is_update)
 
-    if welcome_res.get("status") == "error":
-        raise HTTPException(status_code=500, detail=f"Subscribed {email}, but notification email failed to send: {welcome_res.get('reason')}")
-
     msg_text = f"Successfully updated alert preferences for {email}!" if is_update else f"Successfully subscribed {email}!"
-    if welcome_res.get("status") == "dry_run":
+    if welcome_res.get("status") == "error":
+        msg_text += f" (Note: Subscription saved, but email notification timed out: {welcome_res.get('reason')})"
+    elif welcome_res.get("status") == "dry_run":
         msg_text += " (Note: SMTP credentials unconfigured on backend server; email delivery simulated)."
 
     return {
@@ -640,11 +640,10 @@ def unsubscribe_user_email(req: SubscriptionRequest):
 
     unsub_res = send_unsubscribe_email(email)
 
-    if unsub_res.get("status") == "error":
-        raise HTTPException(status_code=500, detail=f"Unsubscribed {email}, but confirmation email failed to send: {unsub_res.get('reason')}")
-
     msg_text = f"Successfully unsubscribed {email}."
-    if unsub_res.get("status") == "dry_run":
+    if unsub_res.get("status") == "error":
+        msg_text += f" (Note: Unsubscribed from system, but confirmation email timed out: {unsub_res.get('reason')})"
+    elif unsub_res.get("status") == "dry_run":
         msg_text += " (Note: SMTP credentials unconfigured on backend server environment)."
 
     return {
