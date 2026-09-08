@@ -16,33 +16,44 @@ except ImportError:
 def connect_smtp_server(host: str, port: int = 587, timeout: float = 12.0):
     """
     Establishes direct SMTP / SMTPS connection using host domain ('smtp.gmail.com')
-    to preserve TLS SNI SSL certificate validation. Tries configured port (587 or 465) with automatic fallback.
+    over IPv4 (AF_INET) to prevent '[Errno 101] Network is unreachable' in cloud containers
+    without IPv6 egress routing.
     """
-    last_err = None
+    orig_getaddrinfo = socket.getaddrinfo
 
+    def ipv4_only_getaddrinfo(h, p, family=0, type=0, proto=0, flags=0):
+        res = orig_getaddrinfo(h, p, family, type, proto, flags)
+        ipv4_res = [r for r in res if r[0] == socket.AF_INET]
+        return ipv4_res if ipv4_res else res
+
+    last_err = None
     ports_to_try = [port]
     alt_port = 465 if port != 465 else 587
     if alt_port not in ports_to_try:
         ports_to_try.append(alt_port)
 
-    for p in ports_to_try:
-        try:
-            if p == 465:
-                server = smtplib.SMTP_SSL(host, p, timeout=timeout)
-            else:
-                server = smtplib.SMTP(host, p, timeout=timeout)
-                server.ehlo()
-                server.starttls()
-                server.ehlo()
-            print(f"[SMTP Connect] Successfully established connection to {host} on port {p}")
-            return server
-        except Exception as err:
-            print(f"[SMTP Connect] Connection attempt failed on {host}:{p} ({err})")
-            last_err = err
+    socket.getaddrinfo = ipv4_only_getaddrinfo
+    try:
+        for p in ports_to_try:
+            try:
+                if p == 465:
+                    server = smtplib.SMTP_SSL(host, p, timeout=timeout)
+                else:
+                    server = smtplib.SMTP(host, p, timeout=timeout)
+                    server.ehlo()
+                    server.starttls()
+                    server.ehlo()
+                print(f"[SMTP Connect] Successfully established IPv4 SMTP connection to {host} on port {p}")
+                return server
+            except Exception as err:
+                print(f"[SMTP Connect] Connection attempt failed on {host}:{p} ({err})")
+                last_err = err
 
-    if last_err:
-        raise last_err
-    raise RuntimeError(f"Unable to establish SMTP connection to {host}")
+        if last_err:
+            raise last_err
+        raise RuntimeError(f"Unable to establish SMTP connection to {host}")
+    finally:
+        socket.getaddrinfo = orig_getaddrinfo
 
 # In-memory cooldown tracking (timestamp of last sent alert)
 _LAST_ALERT_TIME = 0.0
