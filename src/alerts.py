@@ -442,15 +442,18 @@ def send_email_via_resend(api_key: str, recipient: str, subject: str, html_body:
     Bypasses cloud firewall restrictions on outbound SMTP ports (25, 465, 587).
     """
     import urllib.request
+    import urllib.error
     import json
 
     url = "https://api.resend.com/emails"
+    clean_key = api_key.strip()
     headers = {
-        "Authorization": f"Bearer {api_key}",
+        "Authorization": f"Bearer {clean_key}",
         "Content-Type": "application/json"
     }
 
-    from_address = os.getenv("RESEND_FROM") or f"{sender_name} <onboarding@resend.dev>"
+    # Resend free tier default sender domain
+    from_address = os.getenv("RESEND_FROM") or "onboarding@resend.dev"
 
     payload = {
         "from": from_address,
@@ -467,6 +470,15 @@ def send_email_via_resend(api_key: str, recipient: str, subject: str, html_body:
             res_data = json.loads(response.read().decode("utf-8"))
             print(f"[Resend HTTP API] Dispatched email to {recipient} (ID: {res_data.get('id')})")
             return {"status": "success", "message": f"Email sent via Resend HTTP API to {recipient}", "id": res_data.get("id")}
+    except urllib.error.HTTPError as http_err:
+        err_body = http_err.read().decode("utf-8", errors="ignore")
+        print(f"[Resend HTTP API] HTTP {http_err.code} Error for {recipient}: {err_body}")
+        try:
+            err_json = json.loads(err_body)
+            msg = err_json.get("message") or err_body
+        except Exception:
+            msg = err_body
+        return {"status": "error", "reason": f"Resend API HTTP {http_err.code}: {msg}"}
     except Exception as e:
         print(f"[Resend HTTP API] Error sending email to {recipient}: {e}")
         return {"status": "error", "reason": f"Resend HTTP API error: {e}"}
