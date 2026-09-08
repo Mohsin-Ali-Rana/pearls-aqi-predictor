@@ -160,12 +160,15 @@ def run_inference(force_model_reload: bool = False):
     hw_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     try:
         hw_future = hw_executor.submit(_fetch_hopsworks_batch)
-        batch_data = hw_future.result(timeout=5.0)
+        batch_data = hw_future.result(timeout=15.0)
         if batch_data is not None and not batch_data.empty:
             feature_store_connected = True
+            source = "Hopsworks Cloud Feature Store v2"
+            mode = "Hopsworks Direct Synchronized"
+            fallback_used = False
             print(f"Successfully retrieved factual online feature vector from Hopsworks Feature Store ({len(batch_data)} records).")
     except concurrent.futures.TimeoutError:
-        print("Hopsworks Feature Store query timed out (>5.0s). Serving local feature cache...")
+        print("Hopsworks Feature Store query timed out (>15.0s). Serving local feature cache...")
         feature_store_connected = False
         source = "Local Parquet Feature Cache (features.parquet)"
         mode = "Offline / Local Artifact Mode"
